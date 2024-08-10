@@ -1,7 +1,11 @@
-export default function Home() {
+import Header from "@/components/Header/Header";
+
+const Home = () => {
   return (
     <main>
-      Home
+      <Header />
     </main>
   );
 }
+
+export default Home;
