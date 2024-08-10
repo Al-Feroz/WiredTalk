@@ -2,8 +2,10 @@
 import CloseIcon from "@mui/icons-material/Close";
 import Header from "@/components/Header/Header";
 import axios, { AxiosResponse } from "axios";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { NextPage } from "next";
+import Cookies from "js-cookie";
 
 const Login: NextPage = () => {
   const [ErrorMessage, setErrorMessage] = useState<string>();
@@ -16,6 +18,8 @@ const Login: NextPage = () => {
   const pwdValidator =
     /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*\W)(?!.* ).{8,16}$/;
 
+
+  const router = useRouter();
   const registerUser = () => {
     if (UserName.trim() === "" || UserName.length <= 5) {
       setErrorMessage("Username must greater than 5 letters.");
@@ -43,7 +47,9 @@ const Login: NextPage = () => {
         email: UserEmail,
         pwd: UserPwd,
       }).then((res: AxiosResponse)=>{
-        console.log(res);
+        const data = JSON.parse(res.data);
+        Cookies.set("SESSION_UUID", data?.sessionId);
+        router.push("/");
       }).catch(err =>{
         console.log(err);
       });
