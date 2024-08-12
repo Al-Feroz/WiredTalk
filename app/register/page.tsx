@@ -1,13 +1,13 @@
 "use client";
-import CloseIcon from "@mui/icons-material/Close";
 import Header from "@/components/Header/Header";
 import axios, { AxiosResponse } from "axios";
+import { Close } from "@mui/icons-material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
 
-const Login: NextPage = () => {
+const Register: NextPage = () => {
   const [ErrorMessage, setErrorMessage] = useState<string>();
   const [GotError, setGotError] = useState<boolean>(false);
   const [UserEmail, setUserEmail] = useState<string>("");
@@ -17,7 +17,6 @@ const Login: NextPage = () => {
   const emailValidator = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const pwdValidator =
     /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*\W)(?!.* ).{8,16}$/;
-
 
   const router = useRouter();
   const registerUser = () => {
@@ -42,17 +41,20 @@ const Login: NextPage = () => {
       setErrorMessage("");
       setGotError(false);
 
-      axios.post("http://localhost:5000/api/v1/user/register/", {
-        name: UserName,
-        email: UserEmail,
-        pwd: UserPwd,
-      }).then((res: AxiosResponse)=>{
-        const data = JSON.parse(res.data);
-        Cookies.set("SESSION_UUID", data?.sessionId);
-        router.push("/");
-      }).catch(err =>{
-        console.log(err);
-      });
+      axios
+        .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/register/`, {
+          name: UserName,
+          email: UserEmail,
+          pwd: UserPwd,
+        })
+        .then((res: AxiosResponse) => {
+          const data = res.data;
+          Cookies.set("SESSION_UUID", data?.sessionId);
+          router.push("/");
+        })
+        .catch((err) => {
+          console.log(err);
+        });
     }
   };
 
@@ -69,7 +71,7 @@ const Login: NextPage = () => {
           }
         >
           <p>{ErrorMessage}</p>
-          <CloseIcon
+          <Close
             onClick={() => {
               setGotError(false);
             }}
@@ -137,4 +139,4 @@ const Login: NextPage = () => {
   );
 };
 
-export default Login;
+export default Register;
