@@ -1,9 +1,9 @@
-import Logo from "@/public/WiredTalk.svg";
+import React, { useState, useEffect } from "react";
 import axios, { AxiosResponse } from "axios";
+import Logo from "@/public/WiredTalk.svg";
 import Cookies from "js-cookie";
 import Image from "next/image";
 import Link from "next/link";
-import React, { useState, useEffect } from "react";
 
 const Header: React.FunctionComponent = () => {
   const [isSession, setIsSession] = useState<boolean>(false);
@@ -19,7 +19,7 @@ const Header: React.FunctionComponent = () => {
         })
         .then((res: AxiosResponse) => {
           const data = res.data;
-          setUserData(data.userData);
+          setUserData(data);
         })
         .catch((error) => {
           console.error("Error fetching profile:", error);
