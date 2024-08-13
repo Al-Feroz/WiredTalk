@@ -1,11 +1,11 @@
 "use client";
-import Header from "@/components/Header/Header";
 import axios, { AxiosResponse } from "axios";
 import { Close } from "@mui/icons-material";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
+import Link from "next/link";
 
 const Register: NextPage = () => {
   const [ErrorMessage, setErrorMessage] = useState<string>();
@@ -59,9 +59,8 @@ const Register: NextPage = () => {
   };
 
   return (
-    <main>
-      <Header />
-      <div>
+    <main className="flex justify-center items-center relative w-full h-[100vh]">
+      <div className="absolute top-[5%]">
         <div
           className={
             !GotError
@@ -78,7 +77,7 @@ const Register: NextPage = () => {
           />
         </div>
       </div>
-      <section className="sm:w-full sm:my-0  md:w-[70%] md:my-5 lg:w-[60%] xl:w-[40%] 2xl:w-[30%] mx-auto bg-white px-10 py-5 border rounded-md">
+      <section className="sm:w-full md:w-[70%] lg:w-[60%] xl:w-[40%] 2xl:w-[30%] mx-auto bg-white px-10 py-5 border rounded-md">
         <h1 className="text-xl text-center pt-5 pb-2">REGISTER</h1>
         <div>
           <div className="my-5 bg-gray-200 sm:w-fit md:w-[80%] py-2 px-5 rounded-md mx-auto">
@@ -125,13 +124,16 @@ const Register: NextPage = () => {
               placeholder="XXXXXXXXX"
             />
           </div>
-          <div className="text-center mt-8 mb-5">
+          <div className="text-center">
             <button
-              className="bg-blue-700 py-3 px-8 rounded-lg text-white"
+              className="bg-blue-700 py-3 px-8 mt-2 mb-6 rounded-lg text-white block mx-auto"
               onClick={registerUser}
             >
               Register
             </button>
+            <Link href="/login" className="text-blue-500">
+              Already have an account?
+            </Link>
           </div>
         </div>
       </section>

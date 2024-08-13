@@ -1,11 +1,11 @@
 "use client";
-import Header from "@/components/Header/Header";
 import axios, { AxiosResponse } from "axios";
 import { useRouter } from "next/navigation";
 import { Close } from "@mui/icons-material";
 import { useState } from "react";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
+import Link from "next/link";
 
 const Login: NextPage = () => {
   const [ErrorMessage, setErrorMessage] = useState<string>();
@@ -16,7 +16,6 @@ const Login: NextPage = () => {
   const emailValidator = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const pwdValidator =
     /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*\W)(?!.* ).{8,16}$/;
-  
 
   const router = useRouter();
   const loginUser = () => {
@@ -55,9 +54,8 @@ const Login: NextPage = () => {
   };
 
   return (
-    <main>
-      <Header />
-      <div>
+    <main className="flex justify-center items-center relative w-full h-[100vh]">
+      <div className="absolute top-[5%]">
         <div
           className={
             !GotError
@@ -74,7 +72,7 @@ const Login: NextPage = () => {
           />
         </div>
       </div>
-      <section className="sm:w-full sm:my-0 md:w-[70%] md:my-10 lg:w-[60%] xl:w-[40%] 2xl:w-[30%] mx-auto bg-white px-10 py-5 border rounded-md">
+      <section className="sm:w-full md:w-[70%] lg:w-[60%] xl:w-[40%] 2xl:w-[30%] mx-auto bg-white px-10 py-5 border rounded-md">
         <h1 className="text-xl text-center pt-5 pb-2">LOGIN</h1>
         <div>
           <div className="my-5 bg-gray-200 sm:w-fit md:w-[80%] py-2 px-5 rounded-md mx-auto">
@@ -110,13 +108,16 @@ const Login: NextPage = () => {
               placeholder="XXXXXXXXX"
             />
           </div>
-          <div className="text-center mt-8 mb-5">
+          <div className="text-center">
             <button
-              className="bg-blue-700 py-3 px-8 rounded-lg text-white"
+              className="bg-blue-700 py-3 px-8 mt-2 mb-6 rounded-lg text-white block mx-auto"
               onClick={loginUser}
             >
               Login
             </button>
+            <Link href="/register" className="text-blue-500">
+              Create a new account?
+            </Link>
           </div>
         </div>
       </section>

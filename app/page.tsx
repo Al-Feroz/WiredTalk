@@ -1,14 +1,18 @@
 "use client";
-import Header from "@/components/Header/Header";
+import SidePanel from "@/components/SidePanel/SidePanel";
+import Sidebar from "@/components/Sidebar/Sidebar";
 import Loader from "@/components/Loader/Loader";
+import axios, { AxiosResponse } from "axios";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
 
 const Home: NextPage = () => {
-  const router = useRouter();
+  const [isSession, setIsSession] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const [userData, setUserData] = useState<any>();
+  const router = useRouter();
 
   useEffect(() => {
     if (!Cookies.get("SESSION_UUID")) {
@@ -18,6 +22,24 @@ const Home: NextPage = () => {
     }
   }, [router]);
 
+  useEffect(() => {
+    const sessionUUID = Cookies.get("SESSION_UUID");
+    if (sessionUUID && isSession === false) {
+      setIsSession(true);
+      axios
+        .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/profile/`, {
+          sessionId: sessionUUID,
+        })
+        .then((res: AxiosResponse) => {
+          const data = res.data;
+          setUserData(data);
+        })
+        .catch((error) => {
+          console.error("Error fetching profile:", error);
+        });
+    }
+  }, [isSession]);
+
   return (
     <main>
       {loading ? (
@@ -25,9 +47,10 @@ const Home: NextPage = () => {
           <Loader />
         </div>
       ) : (
-        <>
-          <Header />
-        </>
+        <div className="flex">
+          <Sidebar />
+          <SidePanel />
+        </div>
       )}
     </main>
   );
