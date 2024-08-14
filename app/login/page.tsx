@@ -110,7 +110,7 @@ const Login: NextPage = () => {
           </div>
           <div className="text-center">
             <button
-              className="bg-blue-700 py-3 px-8 mt-2 mb-6 rounded-lg text-white block mx-auto"
+              className="bg-blue-700 active:bg-blue-500 py-3 px-8 mt-2 mb-6 rounded-lg text-white block mx-auto"
               onClick={loginUser}
             >
               Login

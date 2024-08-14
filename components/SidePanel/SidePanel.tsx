@@ -1,3 +1,4 @@
+import Profile from "@/components/Profile/Profile";
 import useAppSelector from "@/lib/hooks";
 import { RootState } from "@/lib/store";
 import React from "react";
@@ -6,7 +7,7 @@ const SidePanel: React.FunctionComponent = () => {
   const currentTab = useAppSelector((state: RootState) => state.tab.currentTab);
   const tabManager: Function = () => {
     if (currentTab === "Profile") {
-      return <div>Profile</div>;
+      return <Profile />;
     } else if (currentTab === "Chat") {
       return <div>Chat</div>;
     } else if (currentTab === "Calls") {
@@ -18,7 +19,7 @@ const SidePanel: React.FunctionComponent = () => {
     }
   };
 
-  return <div>{tabManager()}</div>;
+  return <div className="w-full">{tabManager()}</div>;
 };
 
 export default SidePanel;

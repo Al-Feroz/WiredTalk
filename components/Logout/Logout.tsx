@@ -26,7 +26,7 @@ const Logout: React.FunctionComponent<LogoutProps> = ({ closeBtn }) => {
             />
           </div>
           <button
-            className="bg-red-700 text-white py-2 px-4 mt-8 rounded"
+            className="bg-red-700 active:bg-red-500 text-white py-2 px-4 mt-8 rounded"
             onClick={LogoutUser}
           >
             Logout
