@@ -31,9 +31,15 @@ const Profile = () => {
 
       if (!file) {
         return;
-      } else {
-        setUserImage(file);
       }
+      // Check file size (e.g., 2MB limit)
+      const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+      if (file.size > MAX_SIZE) {
+        alert("File size exceeds the 2MB limit.");
+        return;
+      }
+
+      setUserImage(file);
     });
 
     fileInput.click();
@@ -217,7 +223,12 @@ const Profile = () => {
           >
             Save
           </button>
-          <Link href="/update-password" className="text-blue-700 active:text-blue-500 ms-5">Update Password?</Link>
+          <Link
+            href="/update-password"
+            className="text-blue-700 active:text-blue-500 ms-5"
+          >
+            Update Password?
+          </Link>
         </div>
       </div>
     </div>
