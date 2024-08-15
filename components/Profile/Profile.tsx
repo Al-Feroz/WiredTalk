@@ -17,9 +17,11 @@ const Profile = () => {
 
   useEffect(() => {
     setCurrentImage(
-      userData?.imagePath !== undefined ? userData?.imagePath : CurrentImage
+      userData?.image !== undefined
+        ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${userData.image}`
+        : CurrentImage
     );
-  }, [CurrentImage, userData?.imagePath]);
+  }, [CurrentImage, userData?.image]);
 
   const uploadImage = () => {
     const fileInput: HTMLInputElement = document.createElement("input");
@@ -32,12 +34,6 @@ const Profile = () => {
       if (!file) {
         return;
       }
-      // Check file size (e.g., 2MB limit)
-      const MAX_SIZE = 2 * 1024 * 1024; // 2MB
-      if (file.size > MAX_SIZE) {
-        alert("File size exceeds the 2MB limit.");
-        return;
-      }
 
       setUserImage(file);
     });
@@ -46,36 +42,52 @@ const Profile = () => {
   };
 
   const updateProfile = async () => {
-    userData.imagePath = `${
-      UserImage?.name ? "/users/" + UserImage.name : CurrentImage
-    }`;
-    let result = {
-      ok: true,
-    };
+    let success = true;
 
-    if (UserImage?.name) {
-      const data = new FormData();
-      data.set("file", UserImage);
-      result = await fetch("../../api/uploadImage/", {
-        method: "POST",
-        body: data,
-      });
-    }
+    try {
+      if (UserImage?.name) {
+        const data = new FormData();
+        data.append("file", UserImage);
 
-    if (result.ok) {
-      axios.post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/update`, {
-        userId: userData._id,
-        updateData: {
-          name: userData.name,
-          email: userData.email,
-          headline: userData.headline,
-          imagePath: userData.imagePath,
-        },
-      });
-      setCurrentImage(userData.imagePath);
-      setIsHeadlineChange(false);
-      setIsEmailChange(false);
-      setIsNameChange(false);
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/uploadImage/`,
+          data,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
+        userData.image = UserImage?.name;
+      }
+
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/update`,
+        {
+          userId: userData._id,
+          updateData: {
+            name: userData.name,
+            email: userData.email,
+            headline: userData.headline,
+            image: userData.image,
+          },
+        }
+      );
+
+      setCurrentImage(
+        userData?.image !== undefined
+          ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${userData.image}`
+          : CurrentImage
+      );
+    } catch (error) {
+      console.error("Error during profile update:", error);
+      success = false;
+    } finally {
+      if (success) {
+        setIsHeadlineChange(false);
+        setIsEmailChange(false);
+        setIsNameChange(false);
+      }
     }
   };
 
@@ -220,6 +232,14 @@ const Profile = () => {
           <button
             className="text-white bg-blue-700 active:bg-blue-500 py-2 px-4 rounded-md"
             onClick={updateProfile}
+            disabled={
+              IsNameChange === true ||
+              IsEmailChange === true ||
+              IsHeadlineChange === true ||
+              UserImage !== undefined
+                ? false
+                : true
+            }
           >
             Save
           </button>
