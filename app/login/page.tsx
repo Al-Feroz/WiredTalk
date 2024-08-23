@@ -54,7 +54,7 @@ const Login: NextPage = () => {
   };
 
   return (
-    <main className="flex justify-center items-center relative w-full h-[100vh]">
+    <div className="flex justify-center items-center relative w-full h-[100vh]">
       <div className="absolute top-[5%]">
         <div
           className={
@@ -121,7 +121,7 @@ const Login: NextPage = () => {
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 };
 

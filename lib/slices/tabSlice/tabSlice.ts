@@ -5,7 +5,7 @@ interface TabState {
 }
 
 const initialState: TabState = {
-  currentTab: "Profile",
+  currentTab: "Chat",
 };
 
 const TabSlice = createSlice({

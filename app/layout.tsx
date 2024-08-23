@@ -1,9 +1,9 @@
 import ProviderWrapper from "./ProviderWrapper";
-import { Inter } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import type { Metadata } from "next";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const montserrat = Montserrat({ subsets: ["latin", "cyrillic", "vietnamese"] });
 
 export const metadata: Metadata = {
   title: "WiredTalk",
@@ -18,7 +18,7 @@ export default function RootLayout({
   return (
     <ProviderWrapper>
       <html lang="en">
-        <body className={inter.className} suppressHydrationWarning={true}>
+        <body className={montserrat.className} suppressHydrationWarning>
           {children}
         </body>
       </html>
