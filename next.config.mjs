@@ -1,8 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-    images: {
-        domains: [process.env.SERVER_ORIGIN]
-    }
-};
+const nextConfig = {};
 
 export default nextConfig;
