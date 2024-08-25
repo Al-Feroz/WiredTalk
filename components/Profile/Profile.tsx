@@ -35,10 +35,9 @@ const Profile: React.FunctionComponent<{ userData: userData }> = ({
 
   const updateProfile = async () => {
     if (
-      !IsNameChange ||
-      !IsEmailChange ||
-      !IsHeadlineChange ||
-      UserImage.name === undefined
+      !IsNameChange &&
+      !IsEmailChange &&
+      !IsHeadlineChange
     ) {
       return;
     }
