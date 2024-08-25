@@ -116,7 +116,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       try {
         await peerConnection.setRemoteDescription(
           new RTCSessionDescription(data.answer)
-        );
+        )
       } catch (error) {
         console.error("Error handling answer:", error);
       }
@@ -127,13 +127,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     ) => {
       if (peerConnection) {
         try {
-          if (peerConnection.remoteDescription) {
-            await peerConnection.addIceCandidate(
-              new RTCIceCandidate(candidate)
-            );
-          } else {
-            console.warn("Remote description not set yet.");
-          }
+          await peerConnection.addIceCandidate(
+            new RTCIceCandidate(candidate)
+          );
         } catch (error) {
           console.error("Error adding received ICE candidate:", error);
         }
@@ -222,7 +218,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
               const offer = await peerConnection.createOffer();
               await peerConnection.setLocalDescription(offer);
-              console.log("Sending offer.");
               ws.emit("offer", {
                 offer,
                 from: UserData._id,
@@ -253,7 +248,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           {callStatus}
         </div>
       )}
-      <div className="relative w-fit h-fit mx-auto my-10">
+      <div className="relative sm:w-[85%] lg:w-fit h-fit mx-auto my-10">
         <div className="absolute bottom-6 right-10 w-[25%] h-auto">
           <video
             ref={localVideoRef}
