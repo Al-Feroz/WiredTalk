@@ -4,8 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import axios from "axios";
 
-const Profile: React.FunctionComponent<{ userData: userData }> = ({ userData }) => {
+const Profile: React.FunctionComponent<{ userData: userData }> = ({
+  userData,
+}) => {
   const [IsHeadlineChange, setIsHeadlineChange] = useState<boolean>(false);
+  const [ProfileChanged, setProfileChanged] = useState<boolean>(false);
   const [IsEmailChange, setIsEmailChange] = useState<boolean>(false);
   const [IsNameChange, setIsNameChange] = useState<boolean>(false);
   const [ImageEdit, setImageEdit] = useState<boolean>(false);
@@ -24,6 +27,7 @@ const Profile: React.FunctionComponent<{ userData: userData }> = ({ userData }) 
       }
 
       setUserImage(file);
+      setProfileChanged(true);
     });
 
     fileInput.click();
@@ -42,7 +46,7 @@ const Profile: React.FunctionComponent<{ userData: userData }> = ({ userData }) 
     let success = true;
 
     try {
-      if (UserImage.name) {
+      if (ProfileChanged == true) {
         const data = new FormData();
         data.append("file", UserImage);
 
@@ -55,22 +59,34 @@ const Profile: React.FunctionComponent<{ userData: userData }> = ({ userData }) 
             },
           }
         );
+
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/update`,
+          {
+            userId: userData._id,
+            updateData: {
+              name: userData.name,
+              email: userData.email,
+              headline: userData.headline,
+              image: UserImage.name,
+            },
+          }
+        );
+
+        userData.image = `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${UserImage.name}`;
+      } else {
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/update`,
+          {
+            userId: userData._id,
+            updateData: {
+              name: userData.name,
+              email: userData.email,
+              headline: userData.headline,
+            },
+          }
+        );
       }
-
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/update`,
-        {
-          userId: userData._id,
-          updateData: {
-            name: userData.name,
-            email: userData.email,
-            headline: userData.headline,
-            image: UserImage.name,
-          },
-        }
-      );
-
-      userData.image = `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${UserImage.name}`;
     } catch (error) {
       console.error("Error during profile update:", error);
       success = false;
