@@ -44,7 +44,7 @@ const Contacts: React.FunctionComponent<{ userData: userData }> = ({
 
   const addContact = () => {
     axios
-      .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friends/add/`, {
+      .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friends/request/`, {
         requestUser: userData._id,
         acceptUser: GetContact._id,
       })
