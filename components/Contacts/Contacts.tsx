@@ -25,7 +25,9 @@ const Contacts: React.FunctionComponent<{ userData: userData }> = ({
     }
 
     axios
-      .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/email`, { email: ContactEmail })
+      .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/email`, {
+        email: ContactEmail,
+      })
       .then((res: AxiosResponse) => {
         const data: Contact = res.data;
         if (data.image == undefined) {
@@ -64,15 +66,19 @@ const Contacts: React.FunctionComponent<{ userData: userData }> = ({
           prevRequests.filter((req) => req.requestId !== requestId)
         );
       });
-    };
-    
-    const removeFriend = (connectionId: string) => {
-      axios.get(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friend/remove/${connectionId}`).then(()=>{
+  };
+
+  const removeFriend = (connectionId: string) => {
+    axios
+      .get(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friend/remove/${connectionId}`
+      )
+      .then(() => {
         setFriendsList((prevFriends) =>
           prevFriends.filter((req) => req.connectionId !== connectionId)
         );
-    })
-  }
+      });
+  };
 
   const getReuests = async () => {
     await axios
@@ -235,33 +241,51 @@ const Contacts: React.FunctionComponent<{ userData: userData }> = ({
           <div>
             {Array.isArray(FriendsList) && FriendsList.length > 0 ? (
               <ul>
-                {FriendsList.map(Friend=>{
+                {FriendsList.map((Friend) => {
                   return (
-                  <li key={Friend._id} className="flex items-center justify-between px-12 py-6 bg-neutral-200 shadow">
-                    <div className="flex items-center">
-                      <div className="relative w-12 h-12 rounded-full overflow-hidden">
-                        <Image
-                        src={Friend?.image !== undefined ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${Friend.image}` : "/user.png"}
-                        objectFit="cover"
-                        layout="fill"
-                        alt=""
-                        ></Image>
+                    <li
+                      key={Friend._id}
+                      className="flex items-center justify-between px-12 py-6 bg-neutral-200 shadow"
+                    >
+                      <div className="flex items-center">
+                        <div className="relative w-12 h-12 rounded-full overflow-hidden">
+                          <Image
+                            src={
+                              Friend?.image !== undefined
+                                ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${Friend.image}`
+                                : "/user.png"
+                            }
+                            objectFit="cover"
+                            layout="fill"
+                            alt=""
+                          ></Image>
+                        </div>
+                        <div className="px-5">
+                          <p>{Friend.name}</p>
+                          <span>
+                            {Friend.headline !== undefined
+                              ? Friend.headline
+                              : "--"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="px-5">
-                        <p>{Friend.name}</p>
-                        <span>{Friend.headline !== undefined ? Friend.headline : "--" }</span>
-                      </div>
-                    </div>
-                    <button className="border-2 border-blue-500 rounded-full text-blue-500 px-4 py-2" onClick={()=>{
-                      removeFriend(Friend.connectionId);
-                    }}>
-                      remove
-                    </button>
-                  </li>
-                );
+                      <button
+                        className="border-2 border-blue-500 rounded-full text-blue-500 px-4 py-2"
+                        onClick={() => {
+                          removeFriend(Friend.connectionId);
+                        }}
+                      >
+                        remove
+                      </button>
+                    </li>
+                  );
                 })}
               </ul>
-            ): <div className="w-full h-full flex justify-center items-center">No friends yet.</div>}
+            ) : (
+              <div className="w-full h-full flex justify-center items-center">
+                No friends yet.
+              </div>
+            )}
           </div>
         ) : (
           <></>

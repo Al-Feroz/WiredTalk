@@ -27,16 +27,18 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
 
   const makeCall = () => {
     const uuid = uuidv4().split("-").join("").slice(0, 15);
-    axios.post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/call/register`, {
-      receivers: CurrentChat._id,
-      creatorId: userData._id,
-      callType: "single",
-      callId: uuid,
-    }).then(()=>{
-      dispatch(changeRoute(window.location.pathname));
-      router.push(`/vc/${uuid}`);
-    })
-  }
+    axios
+      .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/call/register`, {
+        receivers: CurrentChat._id,
+        creatorId: userData._id,
+        callType: "single",
+        callId: uuid,
+      })
+      .then(() => {
+        dispatch(changeRoute(window.location.pathname));
+        router.push(`/vc/${uuid}`);
+      });
+  };
 
   useEffect(() => {
     if (userData && userData._id.trim() !== "") {
@@ -67,7 +69,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
               setCurrentChat(userData);
             }}
           >
-            <div className="relative sm:w-[30px] sm:h-[30px] lg:w-[50px] lg:h-[50px] rounded-full overflow-hidden me-2">
+            <div className="relative w-[40px] h-[30px] sm:w-[40px] sm:h-[30px] md:w-[30px] lg:w-[50px] lg:h-[50px] rounded-full overflow-hidden me-2">
               <Image
                 src={userData.image}
                 layout="fill"
@@ -90,7 +92,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                   }}
                   key={Friend._id}
                 >
-                  <div className="relative sm:w-[30px] sm:h-[30px] lg:w-[50px] lg:h-[50px] rounded-full overflow-hidden me-2">
+                  <div className="relative w-[40px] h-[30px] sm:w-[40px] sm:h-[30px] md:w-[30px] lg:w-[50px] lg:h-[50px] rounded-full overflow-hidden me-2">
                     <Image
                       src={
                         Friend.image !== undefined
@@ -102,7 +104,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                       alt=""
                     ></Image>
                   </div>
-                  <span>{Friend.name}</span>
+                  <span className="ellipsis">{Friend.name}</span>
                   <span className="absolute right-4 top-1/2 transform -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                     <ChevronRight />
                   </span>
@@ -138,7 +140,10 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
             </div>
             {CurrentChat.name !== userData.name ? (
               <div>
-                <button onClick={makeCall} className="text-blue-500 border-2 border-blue-500 rounded-full hover:text-blue-600 hover:border-blue-600 px-2 py-1.5">
+                <button
+                  onClick={makeCall}
+                  className="text-blue-500 border-2 border-blue-500 rounded-full hover:text-blue-600 hover:border-blue-600 px-2 py-1.5"
+                >
                   <VideoCall />
                 </button>
               </div>

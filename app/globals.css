@@ -6,6 +6,14 @@ body {
   background-color: #ebebeb;
 }
 
+.ellipsis {
+  display: inline-block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @keyframes bounce1 {
   0% {
     transform: rotate(0deg) translateX(60px);

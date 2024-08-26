@@ -34,11 +34,7 @@ const Profile: React.FunctionComponent<{ userData: userData }> = ({
   };
 
   const updateProfile = async () => {
-    if (
-      !IsNameChange &&
-      !IsEmailChange &&
-      !IsHeadlineChange
-    ) {
+    if (!IsNameChange && !IsEmailChange && !IsHeadlineChange) {
       return;
     }
 
