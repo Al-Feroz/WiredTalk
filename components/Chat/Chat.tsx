@@ -1,10 +1,17 @@
-import { ChevronRight, SearchOutlined, VideoCall } from "@mui/icons-material";
+import {
+  ChevronRight,
+  SearchOutlined,
+  Send,
+  VideoCall,
+} from "@mui/icons-material";
 import { changeRoute } from "@/lib/slices/routeSlice/routeSlice";
+import MessageBox from "@/components/MessageBox/MessageBox";
 import React, { useEffect, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
 import { v4 as uuidv4 } from "uuid";
+import socket from "@/utils/socket";
 import Image from "next/image";
 
 const Chat: React.FunctionComponent<{ userData: userData }> = ({
@@ -12,8 +19,22 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
 }) => {
   const [FriendsList, setFriendsList] = useState<Array<any>>();
   const [CurrentChat, setCurrentChat] = useState<any>();
+  const [Message, setMessage] = useState<string>("");
+  const [MessagesList, setMessagesList] = useState<
+    Array<{
+      _id: string;
+      senderId: string;
+      receiverId: string;
+      message: string;
+      timming: string;
+      seen: boolean;
+    }>
+  >([]);
   const dispatch = useDispatch();
   const router = useRouter();
+  const ws = socket;
+
+  ws.connect();
 
   const getFriends = async () => {
     await axios
@@ -23,6 +44,35 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       .then((res: AxiosResponse) => {
         setFriendsList(res.data);
       });
+  };
+
+  const getMessages = async () => {
+    try {
+      const response: AxiosResponse = await axios.get(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/messages/one-to-one/${userData._id}`
+      );
+
+      const messages = response.data;
+      const statusUpdatePromises = messages
+        .filter((message: any) => message?.seen === false)
+        .map((message: any) => {
+          if (message?.receiverId === userData._id) {
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${message?._id}`
+              )
+              .then(() => {
+                message.seen = true;
+                ws.emit("message-read", { messageId: message._id });
+              });
+          }
+        });
+      await Promise.all(statusUpdatePromises);
+
+      setMessagesList(messages);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
   };
 
   const makeCall = () => {
@@ -40,15 +90,77 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       });
   };
 
+  const sendMessage = async () => {
+    const currentDate = new Date();
+    const data = {
+      senderId: userData._id,
+      receiverId: CurrentChat?._id,
+      message: Message,
+      timming: currentDate.toLocaleTimeString([], {
+        hour12: true,
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      seen: false,
+    };
+    await axios
+      .post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/send`,
+        data
+      )
+      .then((res: AxiosResponse) => {
+        ws.emit("one-to-one-message", { _id: res.data, ...data });
+      });
+    setMessage("");
+  };
+
+  const OneToOneMessage = (data: {
+    _id: string;
+    senderId: string;
+    receiverId: string;
+    message: string;
+    timming: string;
+    seen: boolean;
+  }) => {
+    if (data.senderId === userData._id || data.receiverId === userData._id) {
+      if (data.receiverId === userData._id) {
+        axios.get(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${data._id}`
+        );
+      }
+      setMessagesList((prevMessages) => [...prevMessages, data]);
+    }
+  };
+
+  const messageStatusHandle = (data: { messageId: string }) => {
+    const message = MessagesList.find(
+      (message) => message._id === data.messageId
+    );
+    if (message) {
+      message.seen = true;
+    }
+  };
+
+  useEffect(() => {
+    ws.on("message-read", messageStatusHandle);
+    ws.on("one-to-one-message", OneToOneMessage);
+
+    return () => {
+      ws.off("message-read", messageStatusHandle);
+      ws.off("one-to-one-message", OneToOneMessage);
+    };
+  }, [ws, userData._id, CurrentChat?._id]);
+
   useEffect(() => {
     if (userData && userData._id.trim() !== "") {
       getFriends();
+      getMessages();
     }
   }, [userData]);
 
   return (
     <div className="h-full flex items-center">
-      <div className="w-[20%] h-full bg-gray-100 shadow pt-6">
+      <div className="w-[20%] h-full bg-gray-100 pt-6 border-[0.5px] border-neutral-300 border-opacity-50 shadow">
         <div className="relative flex w-[80%] justify-center items-center mx-auto bg-transparent">
           <span className="sm:text-lg lg:text-2xl font-light">
             <SearchOutlined
@@ -69,7 +181,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
               setCurrentChat(userData);
             }}
           >
-            <div className="relative w-[40px] h-[30px] sm:w-[40px] sm:h-[30px] md:w-[30px] lg:w-[50px] lg:h-[50px] rounded-full overflow-hidden me-2">
+            <div className="relative w-[30px] h-[30px] sm:w-[32px] sm:h-[32px] lg:w-[50px] lg:h-[50px] rounded-full overflow-hidden me-2">
               <Image
                 src={userData.image}
                 layout="fill"
@@ -116,43 +228,77 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
           )}
         </ul>
       </div>
-      <div className="w-[80%] h-full bg-neutral-200">
-        {CurrentChat !== undefined ? (
-          <div className="flex items-center justify-between w-full px-8 py-3 bg-gray-100">
-            <div className="flex items-center">
-              <div className="relative sm:w-[45px] sm:h-[45px] lg:w-[60px] lg:h-[60px] me-5 rounded-full overflow-hidden">
-                <Image
-                  src={
-                    CurrentChat.name !== userData.name
-                      ? CurrentChat.image !== undefined
-                        ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${CurrentChat.image}`
-                        : "/user.png"
-                      : CurrentChat.image
-                  }
-                  layout="fill"
-                  objectFit="cover"
-                  alt=""
-                ></Image>
+      <div className="relative w-[80%] h-screen bg-neutral-200 flex flex-col">
+        {CurrentChat !== undefined && (
+          <>
+            <div className="flex items-center justify-between w-full px-8 py-3 bg-gray-100 border-[0.5px] border-neutral-300 border-opacity-50 shadow-2xl">
+              <div className="flex items-center">
+                <div className="relative sm:w-[45px] sm:h-[45px] lg:w-[60px] lg:h-[60px] me-5 rounded-full overflow-hidden">
+                  <Image
+                    src={
+                      CurrentChat.name !== userData.name
+                        ? CurrentChat.image !== undefined
+                          ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${CurrentChat.image}`
+                          : "/user.png"
+                        : CurrentChat.image
+                    }
+                    layout="fill"
+                    objectFit="cover"
+                    alt=""
+                  ></Image>
+                </div>
+                <h1>
+                  {CurrentChat.name !== userData.name
+                    ? CurrentChat.name
+                    : "You"}
+                </h1>
               </div>
-              <h1>
-                {CurrentChat.name !== userData.name ? CurrentChat.name : "You"}
-              </h1>
+              {CurrentChat.name !== userData.name && (
+                <div>
+                  <button
+                    onClick={makeCall}
+                    className="text-blue-500 border-2 border-blue-500 rounded-full hover:text-blue-600 hover:border-blue-600 px-2 py-1.5"
+                  >
+                    <VideoCall />
+                  </button>
+                </div>
+              )}
             </div>
-            {CurrentChat.name !== userData.name ? (
-              <div>
-                <button
-                  onClick={makeCall}
-                  className="text-blue-500 border-2 border-blue-500 rounded-full hover:text-blue-600 hover:border-blue-600 px-2 py-1.5"
-                >
-                  <VideoCall />
-                </button>
-              </div>
-            ) : (
-              <></>
-            )}
-          </div>
-        ) : (
-          <></>
+            <div className="flex-1 overflow-y-auto bg-neutral-100 bg-opacity-60 mb-[62px]">
+              {MessagesList.length > 0 &&
+                MessagesList.map((message) => {
+                  if (
+                    (userData._id === message.senderId &&
+                      CurrentChat._id === message.receiverId) ||
+                    (userData._id === message.receiverId &&
+                      CurrentChat._id === message.senderId)
+                  ) {
+                    const isSender: boolean =
+                      message.senderId === userData._id ? false : true;
+                    return (
+                      <MessageBox
+                        key={message._id}
+                        isSender={isSender}
+                        message={message.message}
+                        timming={message.timming}
+                      ></MessageBox>
+                    );
+                  }
+                })}
+            </div>
+            <div className="bg-white w-full flex absolute bottom-0 px-4 py-3">
+              <input
+                className="w-full h-full bg-neutral-300 px-4 py-2 mr-2 rounded-lg placeholder:text-black text-black outline-none"
+                type="text"
+                placeholder="Type message..."
+                value={Message === "" ? "" : Message}
+                onChange={(ev) => setMessage(ev.target.value)}
+              />
+              <button className="cursor-pointer" onClick={sendMessage}>
+                <Send />
+              </button>
+            </div>
+          </>
         )}
       </div>
     </div>

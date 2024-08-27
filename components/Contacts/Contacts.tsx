@@ -71,7 +71,7 @@ const Contacts: React.FunctionComponent<{ userData: userData }> = ({
   const removeFriend = (connectionId: string) => {
     axios
       .get(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friend/remove/${connectionId}`
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friends/remove/${connectionId}`
       )
       .then(() => {
         setFriendsList((prevFriends) =>
