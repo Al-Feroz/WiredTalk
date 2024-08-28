@@ -28,8 +28,15 @@ const Contacts: React.FunctionComponent<{ userData: userData }> = ({
       .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/email`, {
         email: ContactEmail,
       })
-      .then((res: AxiosResponse) => {
+      .then(async (res: AxiosResponse) => {
         const data: Contact = res.data;
+        const result = await axios.post(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/friend/requested/`,
+          { requestUser: userData._id, acceptUser: data._id }
+        );
+
+        if (result.data.exist === true) return;
+
         if (data.image == undefined) {
           data.image = "/user.png";
         } else {
