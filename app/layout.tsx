@@ -1,4 +1,4 @@
-import ProviderWrapper from "./ProviderWrapper";
+import ProviderWrapper from "@/app/ProviderWrapper";
 import { Montserrat } from "next/font/google";
 import type { Metadata } from "next";
 import "./globals.css";

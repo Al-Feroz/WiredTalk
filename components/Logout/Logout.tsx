@@ -14,7 +14,7 @@ const Logout: React.FunctionComponent<LogoutProps> = ({ closeBtn }) => {
     router.push("/login");
   };
   return (
-    <div className="fixed top-0 right-0 bottom-0 left-0 bg-black bg-opacity-30">
+    <div className="fixed top-0 right-0 bottom-0 left-0 bg-black bg-opacity-30 z-50">
       <div className="flex w-full h-full justify-center items-center">
         <div className="bg-white px-6 py-4 text-center rounded">
           <div className="flex justify-between items-center">

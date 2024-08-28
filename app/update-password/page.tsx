@@ -74,7 +74,7 @@ const UpdatePassword: NextPage = () => {
   };
 
   return (
-    <main className="flex justify-center items-center relative w-full">
+    <div className="flex justify-center items-center relative w-full">
       <div className="absolute top-[5%]">
         <div
           className={
@@ -132,7 +132,7 @@ const UpdatePassword: NextPage = () => {
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 };
 
