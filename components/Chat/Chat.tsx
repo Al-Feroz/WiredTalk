@@ -132,6 +132,12 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     }
   };
 
+  const OneToOneDelete = (data: { messageId: string }) => {
+    setMessagesList((prevMessagesList) =>
+      prevMessagesList.filter((message) => message._id !== data.messageId)
+    );
+  };
+
   const messageStatusHandle = (data: { messageId: string }) => {
     const message = MessagesList.find(
       (message) => message._id === data.messageId
@@ -141,13 +147,36 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     }
   };
 
+  const editMessage = () => {};
+  const deleteMessage = async (messageId: string) => {
+    try {
+      const result = await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/delete/`,
+        { messageId }
+      );
+
+      if (result.status === 200) {
+        setMessagesList((prevMessagesList) =>
+          prevMessagesList.filter((message) => message._id !== messageId)
+        );
+        ws.emit("one-to-one-delete", { messageId: messageId });
+      } else {
+        console.error("Failed to delete message:", result.statusText);
+      }
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  };
+
   useEffect(() => {
     ws.on("message-read", messageStatusHandle);
     ws.on("one-to-one-message", OneToOneMessage);
+    ws.on("one-to-one-delete", OneToOneDelete);
 
     return () => {
       ws.off("message-read", messageStatusHandle);
       ws.off("one-to-one-message", OneToOneMessage);
+      ws.off("one-to-one-delete", OneToOneDelete);
     };
   }, [ws, userData._id, CurrentChat?._id]);
 
@@ -281,6 +310,9 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                         isSender={isSender}
                         message={message.message}
                         timming={message.timming}
+                        messageId={message._id}
+                        onEdit={editMessage}
+                        onDelete={deleteMessage}
                       ></MessageBox>
                     );
                   }
