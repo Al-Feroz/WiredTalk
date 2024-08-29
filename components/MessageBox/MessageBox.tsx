@@ -12,11 +12,11 @@ const MessageBox: React.FC<{
   const [showOptions, setShowOptions] = useState(false);
 
   return (
-    <div className={`flex items-center justify-${isSender ? "start" : "end"}`}>
+    <div className={`flex items-center ${isSender ? "justify-start" : "justify-end"}`}>
       <div className="relative max-w-60">
         <div
-          className={`bg-blue-${isSender ? "900" : "600"} text-${
-            isSender ? "right" : "left"
+          className={`${isSender ? "bg-blue-900" : "bg-blue-600"} ${
+            isSender ? "text-right" : "text-left"
           } text-white rounded-md px-4 py-1 mx-2 my-5`}
         >
           <div>{message}</div>
