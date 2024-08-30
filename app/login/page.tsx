@@ -12,7 +12,6 @@ const Login: NextPage = () => {
   const [GotError, setGotError] = useState<boolean>(false);
   const [UserEmail, setUserEmail] = useState<string>("");
   const [UserPwd, setUserPwd] = useState<string>("");
-  const [ConfPwd, setConfPwd] = useState<string>("");
   const emailValidator = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const pwdValidator =
     /^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*\W)(?!.* ).{8,16}$/;
@@ -24,9 +23,6 @@ const Login: NextPage = () => {
       return setGotError(true);
     } else if (UserEmail.trim().length <= 12) {
       setErrorMessage("Email address is too short. Enter valid email address.");
-      return setGotError(true);
-    } else if (UserPwd !== ConfPwd) {
-      setErrorMessage("Invalid Password!");
       return setGotError(true);
     } else if (!pwdValidator.test(UserPwd)) {
       setErrorMessage(
@@ -93,17 +89,6 @@ const Login: NextPage = () => {
                 setUserPwd(e.target.value);
               }}
               className="ms-5 outline-none bg-transparent"
-              type="password"
-              placeholder="XXXXXXXXX"
-            />
-          </div>
-          <div className="my-5 bg-gray-200 sm:w-fit md:w-[80%] py-2 px-5 rounded-md mx-auto">
-            <label className="text-sm block">Confirm Password:</label>
-            <input
-              onChange={(e) => {
-                setConfPwd(e.target.value);
-              }}
-              className="outline-none bg-transparent mt-1"
               type="password"
               placeholder="XXXXXXXXX"
             />
