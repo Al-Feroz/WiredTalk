@@ -8,6 +8,7 @@ import { NextPage } from "next";
 import Cookies from "js-cookie";
 import {
   CallEnd,
+  Message,
   Mic,
   MicOff,
   VideocamOffOutlined,
@@ -37,12 +38,14 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   );
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
   const [ReceiverName, setReceiverName] = useState<string>("");
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
-  const [callStatus, setCallStatus] = useState<string>();
+  const [callStatus, setCallStatus] = useState<string>("");
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const callStatusRef = useRef<string>("");
   const ws = socket;
 
   const changeAudio = () => {
@@ -52,12 +55,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         localStream.getAudioTracks().forEach((track) => {
           track.enabled = newState;
         });
-      };
+      }
 
-      peerConnection?.getSenders().map(sender=>{
-        if(sender.track?.kind == "audio") {
+      peerConnection?.getSenders().map((sender) => {
+        if (sender.track?.kind == "audio") {
           sender.track.enabled = newState;
-        };
+        }
       });
       return newState;
     });
@@ -70,12 +73,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         localStream.getVideoTracks().forEach((track) => {
           track.enabled = newState;
         });
-      };
-      
-      peerConnection?.getSenders().map(sender=>{
-        if(sender.track?.kind == "video") {
+      }
+
+      peerConnection?.getSenders().map((sender) => {
+        if (sender.track?.kind == "video") {
           sender.track.enabled = newState;
-        };
+        }
       });
       return newState;
     });
@@ -121,6 +124,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   ws.connect();
 
   useEffect(() => {
+    callStatusRef.current = callStatus;
+  }, [callStatus]);
+
+  useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
     if (sessionUUID) {
       axios
@@ -145,10 +152,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   useEffect(() => {
     const remoteStream = new MediaStream();
     setRemoteStream(remoteStream);
-    
+
     const initializePeerConnection = () => {
       const pc = new RTCPeerConnection(peerConnectionConfig);
-      
+
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
       }
@@ -162,7 +169,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           remoteStream.addTrack(event.track);
         }
       };
-      
+
       pc.onicecandidate = (event) => {
         if (event.candidate) {
           ws.emit("ice-candidate", event.candidate);
@@ -183,7 +190,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     };
 
     initializePeerConnection();
-    
+
     return () => {
       if (peerConnection) {
         peerConnection.close();
@@ -240,7 +247,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     ws.on("offer", handleIncomingOffer);
     ws.on("answer", handleIncomingAnswer);
     ws.on("ice-candidate", handleIncomingIceCandidate);
-    
+
     return () => {
       ws.off("offer", handleIncomingOffer);
       ws.off("answer", handleIncomingAnswer);
@@ -258,7 +265,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     const handleCallAccepted = (data: { callId: string }) => {
       if (data.callId === callId) {
         setCallStatus("Call Accepted.");
-        setTimeout(() => setCallStatus(undefined), 2000);
+        setTimeout(() => setCallStatus(""), 2000);
       }
     };
 
@@ -281,94 +288,98 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [UserData._id, callId, prevRoute]);
 
   useEffect(() => {
-    axios
-      .get(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/call/${callId}`)
-      .then(async (res: AxiosResponse) => {
+    if (!isCallStarted) {
+      setIsCallStarted(true);
+    }
+
+    const fetchDataAndSetupCall = async () => {
+      try {
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/call/${callId}`
+        );
         const data = res.data;
 
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true,
-          });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
 
+        if (isCallStarted) {
           setLocalStream(stream);
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = stream;
           }
-
-          if (peerConnection) {
-            if (data.creatorId === UserData._id) {
-              setCallStatus("Calling...");
-              ws.emit("calling", {
-                callId,
-                from: UserData._id,
-                to: data.receivers,
-                type: data.type,
-              });
-
-              await axios
-                .post(
-                  `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
-                  {
-                    userId: data.receivers,
-                  }
-                )
-                .then((res: AxiosResponse) => {
-                  const data = res.data;
-                  setReceiverName(data.name);
-                });
-            } else if (
-              data.type === "single" &&
-              data.receivers === UserData._id
-            ) {
-              ws.emit("accepting", {
-                callId,
-                from: UserData._id,
-                to: data.creatorId,
-                type: data.type,
-              });
-
-              const offer = await peerConnection.createOffer();
-              await peerConnection.setLocalDescription(offer);
-              ws.emit("offer", {
-                offer,
-                from: UserData._id,
-                to: data.creatorId,
-                type: data.type,
-              });
-
-              await axios
-                .post(
-                  `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
-                  {
-                    userId: data.creatorId,
-                  }
-                )
-                .then((res: AxiosResponse) => {
-                  const data = res.data;
-                  setReceiverName(data.name);
-                });
-            }
-
-            stream.getTracks().forEach((track) => {
-              if (peerConnection.signalingState !== "closed") {
-                peerConnection.addTrack(track, stream);
-              }
-            });
-          }
-        } catch (error) {
-          console.error("Error getting media stream:", error);
         }
-      })
-      .catch((error) => {
-        console.log(error);
-      });
-  }, [callId, peerConnection, UserData._id]);
+
+        if (peerConnection) {
+          if (data.creatorId === UserData._id && isCallStarted) {
+            setCallStatus("Calling...");
+
+            ws.emit("calling", {
+              callId,
+              from: UserData._id,
+              to: data.receivers,
+              type: data.type,
+            });
+
+            const remoteUserRes = await axios.post(
+              `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
+              { userId: data.receivers }
+            );
+            setReceiverName(remoteUserRes.data.name);
+
+            const timeoutId = setTimeout(() => {
+              if (callStatusRef.current === "Calling..." || callStatusRef.current === "Ringing...") {
+                setCallStatus(`${remoteUserRes.data.name} did not receive your request.`);
+                window.location.replace(prevRoute);
+              }
+            }, 15000);
+
+            return () => clearTimeout(timeoutId);
+          } else if (
+            data.type === "single" &&
+            data.receivers === UserData._id
+          ) {
+            ws.emit("accepting", {
+              callId,
+              from: UserData._id,
+              to: data.creatorId,
+              type: data.type,
+            });
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            ws.emit("offer", {
+              offer,
+              from: UserData._id,
+              to: data.creatorId,
+              type: data.type,
+            });
+
+            const creatorUserRes = await axios.post(
+              `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
+              { userId: data.creatorId }
+            );
+            setReceiverName(creatorUserRes.data.name);
+          }
+
+          stream.getTracks().forEach((track) => {
+            if (peerConnection.signalingState !== "closed") {
+              peerConnection.addTrack(track, stream);
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Error getting media stream or handling call:", error);
+      }
+    };
+
+    fetchDataAndSetupCall();
+  }, [callId, peerConnection, UserData._id, isCallStarted]);
 
   return (
     <div className="w-full h-full relative">
-      {callStatus && (
+      {callStatus !== "" && (
         <div className="relative w-auto h-auto z-10">
           <div className="absolute top-0 left-0 right-0 bg-blue-600 text-white py-3 px-8 font-semibold">
             {callStatus}
@@ -403,6 +414,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         <div className="w-full h-[15%] bg-blue-700 text-white flex flex-col items-center justify-around px-6">
           <div>{ReceiverName !== "" && <h1>You - {ReceiverName}</h1>}</div>
           <div>
+            {/* <button className="p-2 rounded-full bg-blue-950 mx-2">
+              <Message />
+            </button> */}
             <button
               className="p-2 rounded-full bg-green-600 mx-2"
               onClick={changeAudio}

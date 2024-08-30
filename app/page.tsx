@@ -13,6 +13,7 @@ import { NextPage } from "next";
 import Cookies from "js-cookie";
 
 const Home: NextPage = () => {
+  const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [isSession, setIsSession] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [NewCallId, setNewCallId] = useState<string>();
@@ -35,6 +36,7 @@ const Home: NextPage = () => {
     if (!Cookies.get("SESSION_UUID")) {
       router.push("/login");
     } else {
+      setCallAudio(new Audio("/audios/callring2.mp3"));
       setLoading(false);
       const sessionUUID = Cookies.get("SESSION_UUID");
       if (sessionUUID && isSession === false) {
@@ -58,12 +60,15 @@ const Home: NextPage = () => {
           });
       }
     }
-  }, []);
+  }, [isSession, router]);
 
   ws.connect();
 
   const receiveCall = () => {
     dispatch(changeRoute(window.location.pathname));
+    if (!CallAudio) return;
+    CallAudio.pause();
+    CallAudio.currentTime = 0;
     router.push(`/vc/${NewCallId}`);
   };
 
@@ -75,32 +80,51 @@ const Home: NextPage = () => {
     });
     setNewCallId(undefined);
     setCallerData(undefined);
+    if (!CallAudio) return;
+    CallAudio.pause();
+    CallAudio.currentTime = 0;
   };
-  
+
   useEffect(() => {
     const handleCalling = async (data: any) => {
       if (data?.to === UserData._id) {
         ws.emit("ringing", data);
-        await axios
-          .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`, {
-            userId: data?.from,
-          })
-          .then((res: AxiosResponse) => {
-            setNewCallId(data.callId);
-            setCallerData(res.data);
-          })
-          .catch((err) => {
-            console.log(err);
-          });
+
+        try {
+          const response = await axios.post(
+            `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
+            { userId: data?.from }
+          );
+
+          setNewCallId(data.callId);
+          setCallerData(response.data);
+
+          try {
+            if (CallAudio) {
+              CallAudio.play();
+
+              setTimeout(() => {
+                setNewCallId(undefined);
+                setCallerData(undefined);
+                CallAudio.pause();
+                CallAudio.currentTime = 0;
+              }, 15000);
+            }
+          } catch (err) {
+            console.log("got error in running audio file.", err);
+          }
+        } catch (error) {
+          console.log(error);
+        }
       }
     };
-    
+
     ws.on("calling", handleCalling);
 
     return () => {
       ws.off("calling", handleCalling);
     };
-  }, [UserData]);
+  }, [UserData, CallAudio]);
 
   return (
     <div>
