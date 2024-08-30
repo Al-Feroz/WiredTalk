@@ -36,7 +36,7 @@ const MessageBox: React.FC<{
                 className="bg-transparent hover:bg-neutral-100 px-2 py-1 w-full"
                 onClick={() => {
                   setShowOptions(false);
-                  onEdit();
+                  onEdit(messageId);
                 }}
               >
                 Edit

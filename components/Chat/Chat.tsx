@@ -18,6 +18,8 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   userData,
 }) => {
   const [FriendsList, setFriendsList] = useState<Array<any>>();
+  const [EditId, setEditId] = useState<string>("");
+  const [EditValue, setEditValue] = useState<string>("");
   const [CurrentChat, setCurrentChat] = useState<any>();
   const [Message, setMessage] = useState<string>("");
   const [MessagesList, setMessagesList] = useState<
@@ -114,40 +116,46 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     setMessage("");
   };
 
-  const OneToOneMessage = (data: {
-    _id: string;
-    senderId: string;
-    receiverId: string;
-    message: string;
-    timming: string;
-    seen: boolean;
-  }) => {
-    if (data.senderId === userData._id || data.receiverId === userData._id) {
-      if (data.receiverId === userData._id) {
-        axios.get(
-          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${data._id}`
+  const CencelEditedMessage = () => {
+    setEditId("");
+    setEditValue("");
+  };
+
+  const SendEditedMessage = async () => {
+    if (EditId.trim() !== "" && EditValue.trim() !== "") {
+      const result = await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/edit`,
+        { messageId: EditId, updatedMessage: EditValue }
+      );
+
+      if (result.status === 200) {
+        const index = MessagesList.findIndex(
+          (message) => message._id === EditId
         );
+
+        if (index === -1) return;
+
+        setMessagesList((prevMessages) => [
+          ...prevMessages.slice(0, index),
+          { ...prevMessages[index], message: EditValue },
+          ...prevMessages.slice(index + 1),
+        ]);
+
+        ws.emit("one-to-one-edited", {
+          messageId: EditId,
+          updatedMessage: EditValue,
+        });
+
+        setEditId("");
+        setEditValue("");
       }
-      setMessagesList((prevMessages) => [...prevMessages, data]);
     }
   };
 
-  const OneToOneDelete = (data: { messageId: string }) => {
-    setMessagesList((prevMessagesList) =>
-      prevMessagesList.filter((message) => message._id !== data.messageId)
-    );
+  const editMessage = (messageId: string) => {
+    setEditId(messageId);
   };
 
-  const messageStatusHandle = (data: { messageId: string }) => {
-    const message = MessagesList.find(
-      (message) => message._id === data.messageId
-    );
-    if (message) {
-      message.seen = true;
-    }
-  };
-
-  const editMessage = () => {};
   const deleteMessage = async (messageId: string) => {
     try {
       const result = await axios.post(
@@ -168,17 +176,69 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     }
   };
 
+  const OneToOneMessage = (data: {
+    _id: string;
+    senderId: string;
+    receiverId: string;
+    message: string;
+    timming: string;
+    seen: boolean;
+  }) => {
+    if (data.senderId === userData._id || data.receiverId === userData._id) {
+      if (data.receiverId === userData._id) {
+        axios.get(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${data._id}`
+        );
+      }
+      setMessagesList((prevMessages) => [...prevMessages, data]);
+    }
+  };
+
+  const OneToOneEdited = (data: {
+    messageId: string;
+    updatedMessage: string;
+  }) => {
+    const index = MessagesList.findIndex(
+      (message) => message._id === data.messageId
+    );
+
+    if (index === -1) return;
+
+    setMessagesList((prevMessages) => [
+      ...prevMessages.slice(0, index),
+      { ...prevMessages[index], message: data.updatedMessage },
+      ...prevMessages.slice(index + 1),
+    ]);
+  };
+
+  const OneToOneDelete = (data: { messageId: string }) => {
+    setMessagesList((prevMessagesList) =>
+      prevMessagesList.filter((message) => message._id !== data.messageId)
+    );
+  };
+
+  const messageStatusHandle = (data: { messageId: string }) => {
+    const message = MessagesList.find(
+      (message) => message._id === data.messageId
+    );
+    if (message) {
+      message.seen = true;
+    }
+  };
+
   useEffect(() => {
     ws.on("message-read", messageStatusHandle);
-    ws.on("one-to-one-message", OneToOneMessage);
+    ws.on("one-to-one-edited", OneToOneEdited);
     ws.on("one-to-one-delete", OneToOneDelete);
+    ws.on("one-to-one-message", OneToOneMessage);
 
     return () => {
       ws.off("message-read", messageStatusHandle);
-      ws.off("one-to-one-message", OneToOneMessage);
+      ws.off("one-to-one-edited", OneToOneEdited);
       ws.off("one-to-one-delete", OneToOneDelete);
+      ws.off("one-to-one-message", OneToOneMessage);
     };
-  }, [ws, userData._id, CurrentChat?._id]);
+  }, [ws, userData._id, CurrentChat?._id, MessagesList, setMessagesList]);
 
   useEffect(() => {
     if (userData && userData._id.trim() !== "") {
@@ -188,7 +248,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   }, [userData]);
 
   return (
-    <div className="h-full flex items-center">
+    <div className="relative h-full flex items-center">
       <div className="w-[20%] h-full bg-gray-100 pt-6 border-[0.5px] border-neutral-300 border-opacity-50 shadow">
         <div className="relative flex w-[80%] justify-center items-center mx-auto bg-transparent">
           <span className="sm:text-lg lg:text-2xl font-light">
@@ -333,6 +393,35 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
           </>
         )}
       </div>
+      {EditId !== "" && (
+        <div className="fixed top-0 right-0 bottom-0 left-0 bg-black bg-opacity-55 flex justify-center items-center">
+          <div className="bg-white px-5 py-4 rounded-lg">
+            <input
+              type="text"
+              defaultValue={
+                MessagesList.filter((message) => message._id === EditId)[0]
+                  .message
+              }
+              onChange={(e) => setEditValue(e.target.value)}
+              className="my-3 outline-none border-b-2 border-blue-600 rounded"
+            />
+            <div className="flex items-center justify-around">
+              <button
+                className="bg-blue-600 text-white px-3 py-2 rounded-md"
+                onClick={CencelEditedMessage}
+              >
+                Cencel
+              </button>
+              <button
+                className="bg-blue-600 text-white px-3 py-2 rounded-md"
+                onClick={SendEditedMessage}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
