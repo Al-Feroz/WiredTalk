@@ -18,10 +18,10 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   userData,
 }) => {
   const [FriendsList, setFriendsList] = useState<Array<any>>();
-  const [EditId, setEditId] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
   const [CurrentChat, setCurrentChat] = useState<any>();
   const [Message, setMessage] = useState<string>("");
+  const [EditId, setEditId] = useState<string>("");
   const [MessagesList, setMessagesList] = useState<
     Array<{
       _id: string;

@@ -8,12 +8,15 @@ import { NextPage } from "next";
 import Cookies from "js-cookie";
 import {
   CallEnd,
-  Message,
+  Close,
+  Message as MessageIcon,
   Mic,
   MicOff,
+  Send,
   VideocamOffOutlined,
   VideocamOutlined,
 } from "@mui/icons-material";
+import MessageBox from "@/components/MessageBox/MessageBox";
 
 const peerConnectionConfig: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -39,10 +42,24 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
+  const [messagesShow, setMessagesShow] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
-  const [ReceiverName, setReceiverName] = useState<string>("");
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
   const [callStatus, setCallStatus] = useState<string>("");
+  const [EditValue, setEditValue] = useState<string>("");
+  const [CurrentChat, setCurrentChat] = useState<any>();
+  const [Message, setMessage] = useState<string>("");
+  const [EditId, setEditId] = useState<string>("");
+  const [MessagesList, setMessagesList] = useState<
+    Array<{
+      _id: string;
+      senderId: string;
+      receiverId: string;
+      message: string;
+      timming: string;
+      seen: boolean;
+    }>
+  >([]);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const callStatusRef = useRef<string>("");
@@ -121,7 +138,188 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     }
   };
 
+  const getMessages = async (ReceiverId: string) => {
+    try {
+      const response: AxiosResponse = await axios.get(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/messages/one-to-one/${UserData._id}`
+      );
+
+      const messages = response.data;
+      const statusUpdatePromises = messages
+        .filter((message: any) => message?.seen === false)
+        .map((message: any) => {
+          if (message?.receiverId === UserData._id) {
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${message?._id}`
+              )
+              .then(() => {
+                message.seen = true;
+                ws.emit("message-read", { messageId: message._id });
+              });
+          }
+        });
+      await Promise.all(statusUpdatePromises);
+
+      const filteredMessages = messages.filter(
+        (message: any) =>
+          message.senderId == ReceiverId || message.receiverId == ReceiverId
+      );
+      setMessagesList(filteredMessages);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
+  };
+
   ws.connect();
+
+  const sendMessage = async () => {
+    const currentDate = new Date();
+    const data = {
+      senderId: UserData._id,
+      receiverId: CurrentChat?._id,
+      message: Message,
+      timming: currentDate.toLocaleTimeString([], {
+        hour12: true,
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      seen: false,
+    };
+    await axios
+      .post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/send`,
+        data
+      )
+      .then((res: AxiosResponse) => {
+        ws.emit("one-to-one-message", { _id: res.data, ...data });
+      });
+    setMessage("");
+  };
+
+  const CencelEditedMessage = () => {
+    setEditId("");
+    setEditValue("");
+  };
+
+  const SendEditedMessage = async () => {
+    if (EditId.trim() !== "" && EditValue.trim() !== "") {
+      const result = await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/edit`,
+        { messageId: EditId, updatedMessage: EditValue }
+      );
+
+      if (result.status === 200) {
+        const index = MessagesList.findIndex(
+          (message) => message._id === EditId
+        );
+
+        if (index === -1) return;
+
+        setMessagesList((prevMessages) => [
+          ...prevMessages.slice(0, index),
+          { ...prevMessages[index], message: EditValue },
+          ...prevMessages.slice(index + 1),
+        ]);
+
+        ws.emit("one-to-one-edited", {
+          messageId: EditId,
+          updatedMessage: EditValue,
+        });
+
+        setEditId("");
+        setEditValue("");
+      }
+    }
+  };
+
+  const editMessage = (messageId: string) => {
+    setEditId(messageId);
+  };
+
+  const deleteMessage = async (messageId: string) => {
+    try {
+      const result = await axios.post(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/delete/`,
+        { messageId }
+      );
+
+      if (result.status === 200) {
+        setMessagesList((prevMessagesList) =>
+          prevMessagesList.filter((message) => message._id !== messageId)
+        );
+        ws.emit("one-to-one-delete", { messageId: messageId });
+      } else {
+        console.error("Failed to delete message:", result.statusText);
+      }
+    } catch (error) {
+      console.error("Error deleting message:", error);
+    }
+  };
+
+  const OneToOneMessage = (data: {
+    _id: string;
+    senderId: string;
+    receiverId: string;
+    message: string;
+    timming: string;
+    seen: boolean;
+  }) => {
+    if (data.senderId === UserData._id || data.receiverId === UserData._id) {
+      if (data.receiverId === UserData._id) {
+        axios.get(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${data._id}`
+        );
+      }
+      setMessagesList((prevMessages) => [...prevMessages, data]);
+    }
+  };
+
+  const OneToOneEdited = (data: {
+    messageId: string;
+    updatedMessage: string;
+  }) => {
+    const index = MessagesList.findIndex(
+      (message) => message._id === data.messageId
+    );
+
+    if (index === -1) return;
+
+    setMessagesList((prevMessages) => [
+      ...prevMessages.slice(0, index),
+      { ...prevMessages[index], message: data.updatedMessage },
+      ...prevMessages.slice(index + 1),
+    ]);
+  };
+
+  const OneToOneDelete = (data: { messageId: string }) => {
+    setMessagesList((prevMessagesList) =>
+      prevMessagesList.filter((message) => message._id !== data.messageId)
+    );
+  };
+
+  const messageStatusHandle = (data: { messageId: string }) => {
+    const message = MessagesList.find(
+      (message) => message._id === data.messageId
+    );
+    if (message) {
+      message.seen = true;
+    }
+  };
+
+  useEffect(() => {
+    ws.on("message-read", messageStatusHandle);
+    ws.on("one-to-one-edited", OneToOneEdited);
+    ws.on("one-to-one-delete", OneToOneDelete);
+    ws.on("one-to-one-message", OneToOneMessage);
+
+    return () => {
+      ws.off("message-read", messageStatusHandle);
+      ws.off("one-to-one-edited", OneToOneEdited);
+      ws.off("one-to-one-delete", OneToOneDelete);
+      ws.off("one-to-one-message", OneToOneMessage);
+    };
+  }, [ws, UserData._id, CurrentChat?._id, MessagesList, setMessagesList]);
 
   useEffect(() => {
     callStatusRef.current = callStatus;
@@ -326,11 +524,17 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
               { userId: data.receivers }
             );
-            setReceiverName(remoteUserRes.data.name);
+            setCurrentChat(remoteUserRes.data);
+            getMessages(remoteUserRes.data._id);
 
             const timeoutId = setTimeout(() => {
-              if (callStatusRef.current === "Calling..." || callStatusRef.current === "Ringing...") {
-                setCallStatus(`${remoteUserRes.data.name} did not receive your request.`);
+              if (
+                callStatusRef.current === "Calling..." ||
+                callStatusRef.current === "Ringing..."
+              ) {
+                setCallStatus(
+                  `${remoteUserRes.data.name} did not receive your request.`
+                );
                 window.location.replace(prevRoute);
               }
             }, 15000);
@@ -360,7 +564,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
               { userId: data.creatorId }
             );
-            setReceiverName(creatorUserRes.data.name);
+            setCurrentChat(creatorUserRes.data);
+            getMessages(creatorUserRes.data._id);
           }
 
           stream.getTracks().forEach((track) => {
@@ -386,6 +591,49 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </div>
         </div>
       )}
+      <div
+        className={`fixed ${
+          messagesShow ? "left-2" : "-left-[110%]"
+        } flex flex-col h-[80vh] w-[250px] sm:w-[275px] bg-white drop-shadow-lg rounded-lg overflow-hidden top-[4vh] z-20 transition-all duration-500`}
+      >
+        <div className="w-full py-2 px-4 flex justify-between items-center bg-neutral-100 shadow-lg">
+          <h1>You - {CurrentChat?.name ? CurrentChat.name : ""}</h1>
+          <button onClick={() => setMessagesShow(false)}>
+            <Close />
+          </button>
+        </div>
+        <div className="shadow-inner w-full h-full overflow-y-auto">
+          {MessagesList &&
+            MessagesList.length > 0 &&
+            MessagesList.map((message: any) => {
+              const isSender: boolean =
+                message.senderId === UserData._id ? false : true;
+              return (
+                <MessageBox
+                  key={message._id}
+                  message={message.message}
+                  timming={message.timming}
+                  isSender={isSender}
+                  messageId={message._id}
+                  onEdit={editMessage}
+                  onDelete={deleteMessage}
+                />
+              );
+            })}
+        </div>
+        <div className="w-full flex justify-around items-center py-2 px-4 bg-gray-200">
+          <input
+            type="text"
+            placeholder="Type your message here..."
+            className="outline-none bg-transparent"
+            value={Message === "" ? "" : Message}
+            onChange={(ev) => setMessage(ev.target.value)}
+          />
+          <button className="cursor-pointer" onClick={sendMessage}>
+            <Send />
+          </button>
+        </div>
+      </div>
       <div className="w-[100vw] h-[100vh]">
         <div className="relative w-full h-[85%]">
           <div className="absolute bottom-6 right-10 w-[25%] h-auto">
@@ -412,11 +660,16 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </div>
         </div>
         <div className="w-full h-[15%] bg-blue-700 text-white flex flex-col items-center justify-around px-6">
-          <div>{ReceiverName !== "" && <h1>You - {ReceiverName}</h1>}</div>
           <div>
-            {/* <button className="p-2 rounded-full bg-blue-950 mx-2">
-              <Message />
-            </button> */}
+            <h1>You - {CurrentChat?.name ? CurrentChat.name : ""}</h1>
+          </div>
+          <div>
+            <button
+              className="p-2 rounded-full bg-blue-950 mx-2"
+              onClick={() => setMessagesShow(true)}
+            >
+              <MessageIcon />
+            </button>
             <button
               className="p-2 rounded-full bg-green-600 mx-2"
               onClick={changeAudio}
@@ -438,6 +691,35 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </div>
         </div>
       </div>
+      {EditId !== "" && (
+        <div className="fixed top-0 right-0 bottom-0 left-0 bg-black bg-opacity-55 flex justify-center items-center z-50">
+          <div className="bg-white px-5 py-4 rounded-lg">
+            <input
+              type="text"
+              defaultValue={
+                MessagesList.filter((message) => message._id === EditId)[0]
+                  .message
+              }
+              onChange={(e) => setEditValue(e.target.value)}
+              className="my-3 outline-none border-b-2 border-blue-600 rounded"
+            />
+            <div className="flex items-center justify-around">
+              <button
+                className="bg-blue-600 text-white px-3 py-2 rounded-md"
+                onClick={CencelEditedMessage}
+              >
+                Cencel
+              </button>
+              <button
+                className="bg-blue-600 text-white px-3 py-2 rounded-md"
+                onClick={SendEditedMessage}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
