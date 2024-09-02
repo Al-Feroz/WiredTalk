@@ -34,12 +34,23 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     headline: "--",
     image: "/user.png",
   });
+  const [MessagesList, setMessagesList] = useState<
+  Array<{
+    _id: string;
+    senderId: string;
+    receiverId: string;
+    message: string;
+    timming: string;
+    seen: boolean;
+  }>
+  >([]);
   const [peerConnection, setPeerConnection] =
     useState<RTCPeerConnection | null>(null);
   const prevRoute = useAppSelector(
     (state: RootState) => state.route.currentRoute
   );
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
@@ -48,20 +59,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [callStatus, setCallStatus] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
   const [CurrentChat, setCurrentChat] = useState<any>();
-  const [Message, setMessage] = useState<string>("");
-  const [EditId, setEditId] = useState<string>("");
-  const [MessagesList, setMessagesList] = useState<
-    Array<{
-      _id: string;
-      senderId: string;
-      receiverId: string;
-      message: string;
-      timming: string;
-      seen: boolean;
-    }>
-  >([]);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const [Message, setMessage] = useState<string>("");
+  const [EditId, setEditId] = useState<string>("");
   const callStatusRef = useRef<string>("");
   const ws = socket;
 
@@ -308,26 +309,13 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   };
 
   useEffect(() => {
-    ws.on("message-read", messageStatusHandle);
-    ws.on("one-to-one-edited", OneToOneEdited);
-    ws.on("one-to-one-delete", OneToOneDelete);
-    ws.on("one-to-one-message", OneToOneMessage);
-
-    return () => {
-      ws.off("message-read", messageStatusHandle);
-      ws.off("one-to-one-edited", OneToOneEdited);
-      ws.off("one-to-one-delete", OneToOneDelete);
-      ws.off("one-to-one-message", OneToOneMessage);
-    };
-  }, [ws, UserData._id, CurrentChat?._id, MessagesList, setMessagesList]);
-
-  useEffect(() => {
     callStatusRef.current = callStatus;
   }, [callStatus]);
 
   useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
     if (sessionUUID) {
+      setCallAudio(new Audio("/audios/callring2.mp3"));
       axios
         .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/profile/`, {
           sessionId: sessionUUID,
@@ -397,6 +385,20 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, []);
 
   useEffect(() => {
+    ws.on("message-read", messageStatusHandle);
+    ws.on("one-to-one-edited", OneToOneEdited);
+    ws.on("one-to-one-delete", OneToOneDelete);
+    ws.on("one-to-one-message", OneToOneMessage);
+
+    return () => {
+      ws.off("message-read", messageStatusHandle);
+      ws.off("one-to-one-edited", OneToOneEdited);
+      ws.off("one-to-one-delete", OneToOneDelete);
+      ws.off("one-to-one-message", OneToOneMessage);
+    };
+  }, [ws, UserData._id, CurrentChat?._id, MessagesList, setMessagesList]);
+
+  useEffect(() => {
     const handleIncomingOffer = async (data: {
       offer: RTCSessionDescriptionInit;
       from: string;
@@ -463,13 +465,15 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     const handleCallAccepted = (data: { callId: string }) => {
       if (data.callId === callId) {
         setCallStatus("Call Accepted.");
+        CallAudio && CallAudio.pause();
         setTimeout(() => setCallStatus(""), 2000);
       }
     };
-
+    
     const handleCallDeclined = (data: { callId: string; from: string }) => {
       if (data.callId === callId && data.from === UserData._id) {
         setCallStatus("Call Declined.");
+        CallAudio && CallAudio.pause();
         window.location.replace(prevRoute);
       }
     };
@@ -526,6 +530,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             );
             setCurrentChat(remoteUserRes.data);
             getMessages(remoteUserRes.data._id);
+            CallAudio && CallAudio.play();
 
             const timeoutId = setTimeout(() => {
               if (
