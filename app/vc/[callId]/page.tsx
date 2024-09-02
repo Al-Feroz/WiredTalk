@@ -456,6 +456,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [peerConnection, UserData._id]);
 
   useEffect(() => {
+    const handleCalling = async (data: any) => {
+      if (data?.to === UserData._id) {
+        ws.emit("receiver-busy", data);
+      }
+    };
+    
     const handleRinging = (data: any) => {
       if (data.callId === callId && data.type === "single") {
         setCallStatus("Ringing...");
@@ -478,14 +484,28 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     };
 
+    const handleReceiverBusy = async (data: { callId: string; from: string }) => {
+      if (data.callId === callId && data.from === UserData._id) {
+        setCallStatus(`User is busy.`);
+        CallAudio && CallAudio.pause();
+        setTimeout(() => {
+          window.location.replace(prevRoute);
+        }, 3000);
+      }
+    };
+
+    ws.on("calling", handleCalling);
     ws.on("ringing", handleRinging);
     ws.on("accepting", handleCallAccepted);
     ws.on("declined", handleCallDeclined);
-
+    ws.on("receiver-busy", handleReceiverBusy);
+    
     return () => {
+      ws.off("calling", handleCalling);
       ws.off("ringing", handleRinging);
       ws.off("accepting", handleCallAccepted);
       ws.off("declined", handleCallDeclined);
+      ws.off("receiver-busy", handleReceiverBusy);
     };
   }, [UserData._id, callId, prevRoute]);
 
