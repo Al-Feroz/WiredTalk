@@ -35,14 +35,14 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     image: "/user.png",
   });
   const [MessagesList, setMessagesList] = useState<
-  Array<{
-    _id: string;
-    senderId: string;
-    receiverId: string;
-    message: string;
-    timming: string;
-    seen: boolean;
-  }>
+    Array<{
+      _id: string;
+      senderId: string;
+      receiverId: string;
+      message: string;
+      timming: string;
+      seen: boolean;
+    }>
   >([]);
   const [peerConnection, setPeerConnection] =
     useState<RTCPeerConnection | null>(null);
@@ -55,6 +55,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
+  const [RemoteVideo, setRemoteVideo] = useState<boolean>(false);
+  const [RemoteAudio, setRemoteAudio] = useState<boolean>(false);
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
   const [callStatus, setCallStatus] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
@@ -65,6 +67,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [EditId, setEditId] = useState<string>("");
   const callStatusRef = useRef<string>("");
   const ws = socket;
+
+  ws.connect();
 
   const changeAudio = () => {
     setMicEnabled((prev) => {
@@ -79,6 +83,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (sender.track?.kind == "audio") {
           sender.track.enabled = newState;
         }
+      });
+      socket.emit("change-event", {
+        state: newState,
+        type: "audio",
+        call_id: callId,
+        userId: UserData._id,
       });
       return newState;
     });
@@ -97,6 +107,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (sender.track?.kind == "video") {
           sender.track.enabled = newState;
         }
+      });
+      socket.emit("change-event", {
+        state: newState,
+        type: "video",
+        call_id: callId,
+        userId: UserData._id,
       });
       return newState;
     });
@@ -171,8 +187,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       console.error("Error fetching messages:", error);
     }
   };
-
-  ws.connect();
 
   const sendMessage = async () => {
     const currentDate = new Date();
@@ -461,7 +475,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         ws.emit("receiver-busy", data);
       }
     };
-    
+
     const handleRinging = (data: any) => {
       if (data.callId === callId && data.type === "single") {
         setCallStatus("Ringing...");
@@ -475,7 +489,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         setTimeout(() => setCallStatus(""), 2000);
       }
     };
-    
+
     const handleCallDeclined = (data: { callId: string; from: string }) => {
       if (data.callId === callId && data.from === UserData._id) {
         setCallStatus("Call Declined.");
@@ -484,7 +498,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     };
 
-    const handleReceiverBusy = async (data: { callId: string; from: string }) => {
+    const handleReceiverBusy = async (data: {
+      callId: string;
+      from: string;
+    }) => {
       if (data.callId === callId && data.from === UserData._id) {
         setCallStatus(`User is busy.`);
         CallAudio && CallAudio.pause();
@@ -494,17 +511,34 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     };
 
+    const ChangeEvent = (data: {
+      state: boolean;
+      type: string;
+      call_id: string;
+      senderId: string;
+    }) => {
+      if (callId === data.call_id && CurrentChat?._id === data.senderId) {
+        if (data.type === "audio") {
+          setRemoteAudio(!data.state);
+        } else if (data.type === "video") {
+          setRemoteVideo(!data.state);
+        }
+      }
+    };
+
     ws.on("calling", handleCalling);
     ws.on("ringing", handleRinging);
-    ws.on("accepting", handleCallAccepted);
+    ws.on("change-event", ChangeEvent);
     ws.on("declined", handleCallDeclined);
+    ws.on("accepting", handleCallAccepted);
     ws.on("receiver-busy", handleReceiverBusy);
-    
+
     return () => {
       ws.off("calling", handleCalling);
       ws.off("ringing", handleRinging);
-      ws.off("accepting", handleCallAccepted);
+      ws.off("change-event", ChangeEvent);
       ws.off("declined", handleCallDeclined);
+      ws.off("accepting", handleCallAccepted);
       ws.off("receiver-busy", handleReceiverBusy);
     };
   }, [UserData._id, callId, prevRoute]);
@@ -521,10 +555,46 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         );
         const data = res.data;
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const constraints = {
+          video: {
+            deviceId: devices.filter(
+              (device) => device.kind === "videoinput"
+            )[0]?.deviceId,
+          },
+          audio: {
+            deviceId: devices.filter(
+              (device) => device.kind === "audioinput"
+            )[0]?.deviceId,
+          },
+        };
+
+        if (!constraints.audio) {
+          alert("Error: Not get any audio source.");
+          window.location.replace(prevRoute ? prevRoute : "/");
+        } else if (!constraints.video) {
+          alert("Error: Not get any video source.");
+        }
+
+        const stream = new MediaStream();
+
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: constraints.audio,
+          });
+          audioStream.getTracks().map((track) => stream.addTrack(track));
+        } catch (err) {
+          console.log(err);
+        }
+
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({
+            video: constraints.video,
+          });
+          videoStream.getTracks().map((track) => stream.addTrack(track));
+        } catch (err) {
+          console.log(err);
+        }
 
         if (isCallStarted) {
           setLocalStream(stream);
@@ -661,7 +731,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       </div>
       <div className="w-[100vw] h-[100vh]">
         <div className="relative w-full h-[85%]">
-          <div className="absolute bottom-6 right-10 w-[25%] h-auto">
+          <div className="absolute bottom-6 right-10 w-[25%] h-auto z-[100]">
             <video
               ref={localVideoRef}
               playsInline
@@ -675,13 +745,29 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               }}
             />
           </div>
-          <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-300 p-2">
+          <div className="relative w-full h-full flex flex-col items-center justify-center bg-neutral-300 p-2">
             <video
               ref={remoteVideoRef}
               playsInline
               autoPlay
               className="rounded-md w-auto h-auto"
             />
+            <div className="absolute top-0 right-0 left-0 bottom-0 flex justify-center items-center">
+              <span
+                className={`${
+                  !RemoteAudio && "hidden"
+                } bg-gray-600 bg-opacity-30 rounded-full p-5 mx-4 text-white`}
+              >
+                <MicOff />
+              </span>
+              <span
+                className={`${
+                  !RemoteVideo && "hidden"
+                } bg-gray-600 bg-opacity-30 rounded-full p-5 mx-4 text-white`}
+              >
+                <VideocamOffOutlined />
+              </span>
+            </div>
           </div>
         </div>
         <div className="w-full h-[15%] bg-blue-700 text-white flex flex-col items-center justify-around px-6">
