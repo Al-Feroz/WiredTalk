@@ -70,52 +70,175 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   ws.connect();
 
-  const changeAudio = () => {
-    setMicEnabled((prev) => {
-      const newState = !prev;
-      if (localStream) {
-        localStream.getAudioTracks().forEach((track) => {
-          track.enabled = newState;
-        });
-      }
+  const getConstraints = async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const constraints = {
+      video: {
+        deviceId: devices.filter((device) => device.kind === "videoinput")[0]
+          ?.deviceId,
+      },
+      audio: {
+        deviceId: devices.filter((device) => device.kind === "audioinput")[0]
+          ?.deviceId,
+      },
+    };
 
-      peerConnection?.getSenders().map((sender) => {
-        if (sender.track?.kind == "audio") {
-          sender.track.enabled = newState;
-        }
-      });
-      socket.emit("change-event", {
-        state: newState,
-        type: "audio",
-        call_id: callId,
-        userId: UserData._id,
-      });
-      return newState;
-    });
+    if (!constraints.audio) {
+      alert("Error: Not get any audio source.");
+      window.location.replace(prevRoute ? prevRoute : "/");
+    } else if (!constraints.video) {
+      alert("Error: Not get any video source.");
+    }
+
+    return constraints;
   };
 
-  const changeVideo = () => {
-    setVideoEnabled((prev) => {
-      const newState = !prev;
-      if (localStream) {
-        localStream.getVideoTracks().forEach((track) => {
-          track.enabled = newState;
+  const getMediaStream = async (
+    constraint: any,
+    type: string
+  ): Promise<MediaStream | Error> => {
+    let constraints: { video?: any; audio?: any } = {};
+
+    if (type === "video") {
+      constraints = { video: constraint };
+    } else if (type === "audio") {
+      constraints = { audio: constraint };
+    }
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      return newStream;
+    } catch (err) {
+      return Error("an Error Occurred");
+    }
+  };
+
+  function createSilentAudioStream() {
+    const audioContext = new AudioContext();
+    const destination = audioContext.createMediaStreamDestination();
+
+    const buffer = audioContext.createBuffer(
+      1,
+      audioContext.sampleRate,
+      audioContext.sampleRate
+    );
+    const source = audioContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(destination);
+    source.start();
+
+    return destination.stream;
+  }
+
+  const changeAudio = async () => {
+    const newState = !MicEnabled;
+    const stream = localStream;
+    if (!stream) return;
+
+    if (newState) {
+      const constraints = await getConstraints();
+      const audioStream = await getMediaStream(constraints.audio, "audio");
+      if (audioStream instanceof MediaStream) {
+        stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+        audioStream.getAudioTracks().forEach((track) => {
+          stream.addTrack(track);
+          if (peerConnection && peerConnection?.signalingState !== "closed") {
+            peerConnection
+              .getSenders()
+              .filter((sender) => sender.track?.kind === "audio")
+              .forEach((sender) => sender.replaceTrack(track));
+          }
         });
       }
+    } else {
+      stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+      const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
+      stream.addTrack(silentAudioTrack);
+      if (peerConnection && peerConnection?.signalingState !== "closed") {
+        peerConnection
+          .getSenders()
+          .filter((sender) => sender.track?.kind === "audio")
+          .forEach((sender) => sender.replaceTrack(silentAudioTrack));
+      }
+    }
 
-      peerConnection?.getSenders().map((sender) => {
-        if (sender.track?.kind == "video") {
-          sender.track.enabled = newState;
-        }
-      });
-      socket.emit("change-event", {
-        state: newState,
-        type: "video",
-        call_id: callId,
-        userId: UserData._id,
-      });
-      return newState;
+    setLocalStream(stream);
+    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    socket.emit("change-event", {
+      state: newState,
+      type: "audio",
+      call_id: callId,
+      userId: UserData._id,
     });
+    setMicEnabled(newState);
+  };
+
+  const changeVideo = async () => {
+    const newState = !VideoEnabled;
+    const stream = localStream;
+    if (!stream) return;
+
+    if (newState) {
+      const constraints = await getConstraints();
+      const videoStream: MediaStream | Error = await getMediaStream(
+        constraints.video,
+        "video"
+      );
+      if (videoStream instanceof MediaStream) {
+        stream.getVideoTracks().forEach((track) => {
+          stream.removeTrack(track);
+        });
+
+        videoStream.getVideoTracks().forEach((track) => {
+          stream.addTrack(track);
+          if (peerConnection?.signalingState !== "closed") {
+            peerConnection?.getSenders().forEach((sender) => {
+              if (sender.track?.kind !== "audio") {
+                sender.replaceTrack(track);
+                console.log("adding new track");
+              }
+            });
+          }
+        });
+      }
+    } else {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      const blackStream = canvas.captureStream();
+      const blackVideoTrack = blackStream.getVideoTracks()[0];
+
+      stream.getVideoTracks().forEach((track) => {
+        stream.removeTrack(track);
+      });
+
+      if (peerConnection?.signalingState !== "closed") {
+        peerConnection?.getSenders().forEach((sender) => {
+          if (sender.track?.kind !== "audio") {
+            sender.replaceTrack(blackVideoTrack);
+            console.log("removing old track");
+          }
+        });
+      }
+    }
+
+    setLocalStream(stream);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+    }
+    socket.emit("change-event", {
+      state: newState,
+      type: "video",
+      call_id: callId,
+      userId: UserData._id,
+    });
+    setVideoEnabled(newState);
   };
 
   const endCall = async () => {
@@ -555,45 +678,24 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         );
         const data = res.data;
 
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const constraints = {
-          video: {
-            deviceId: devices.filter(
-              (device) => device.kind === "videoinput"
-            )[0]?.deviceId,
-          },
-          audio: {
-            deviceId: devices.filter(
-              (device) => device.kind === "audioinput"
-            )[0]?.deviceId,
-          },
-        };
-
-        if (!constraints.audio) {
-          alert("Error: Not get any audio source.");
-          window.location.replace(prevRoute ? prevRoute : "/");
-        } else if (!constraints.video) {
-          alert("Error: Not get any video source.");
-        }
-
         const stream = new MediaStream();
 
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({
-            audio: constraints.audio,
-          });
+        const constraints = await getConstraints();
+        const audioStream: MediaStream | Error = await getMediaStream(
+          constraints.audio,
+          "audio"
+        );
+        const videoStream: MediaStream | Error = await getMediaStream(
+          constraints.video,
+          "video"
+        );
+
+        if (audioStream instanceof MediaStream) {
           audioStream.getTracks().map((track) => stream.addTrack(track));
-        } catch (err) {
-          console.log(err);
         }
 
-        try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({
-            video: constraints.video,
-          });
+        if (videoStream instanceof MediaStream) {
           videoStream.getTracks().map((track) => stream.addTrack(track));
-        } catch (err) {
-          console.log(err);
         }
 
         if (isCallStarted) {
@@ -737,7 +839,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               playsInline
               autoPlay
               muted
-              className="rounded-md shadow-white drop-shadow-xl"
+              className="rounded-md shadow-white drop-shadow-xl bg-black"
               style={{
                 width: "100%",
                 height: "auto",
