@@ -57,6 +57,8 @@ const Home: NextPage = () => {
           })
           .catch((error) => {
             console.error("Error fetching profile:", error);
+            Cookies.remove("SESSION_UUID");
+            router.push("/login");
           });
       }
     }
