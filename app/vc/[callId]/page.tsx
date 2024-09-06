@@ -1,4 +1,5 @@
 "use client";
+import MessageBox from "@/components/MessageBox/MessageBox";
 import { useEffect, useRef, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import useAppSelector from "@/lib/hooks";
@@ -7,16 +8,17 @@ import socket from "@/utils/socket";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
 import {
-  CallEnd,
-  Close,
+  ScreenSearchDesktopOutlined,
+  StopScreenShareOutlined,
   Message as MessageIcon,
-  Mic,
-  MicOff,
-  Send,
   VideocamOffOutlined,
   VideocamOutlined,
+  CallEnd,
+  MicOff,
+  Close,
+  Send,
+  Mic,
 } from "@mui/icons-material";
-import MessageBox from "@/components/MessageBox/MessageBox";
 
 const peerConnectionConfig: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -52,6 +54,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
@@ -195,7 +198,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             peerConnection?.getSenders().forEach((sender) => {
               if (sender.track?.kind !== "audio") {
                 sender.replaceTrack(track);
-                console.log("adding new track");
               }
             });
           }
@@ -222,7 +224,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         peerConnection?.getSenders().forEach((sender) => {
           if (sender.track?.kind !== "audio") {
             sender.replaceTrack(blackVideoTrack);
-            console.log("removing old track");
           }
         });
       }
@@ -252,6 +253,105 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     } catch (error) {
       console.error("An error occurred during endCall:", error);
+    }
+  };
+
+  const restartStream = async () => {
+    const prevStream = localStream;
+    if (VideoEnabled) {
+      const constraints = await getConstraints();
+      const videoStream: MediaStream | Error = await getMediaStream(
+        constraints.video,
+        "video"
+      );
+      if (videoStream instanceof MediaStream) {
+        prevStream?.getVideoTracks().map((track) => {
+          track.stop();
+          prevStream?.removeTrack(track);
+        });
+        videoStream.getVideoTracks().forEach((track) => {
+          prevStream?.addTrack(track);
+          if (peerConnection?.signalingState !== "closed") {
+            peerConnection?.getSenders().forEach((sender) => {
+              if (sender.track?.kind !== "audio") {
+                sender.replaceTrack(track);
+              }
+            });
+          }
+        });
+      }
+    } else {
+      const canvas = document.createElement("canvas");
+      canvas.width = 640;
+      canvas.height = 480;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+
+      const blackStream = canvas.captureStream();
+      const blackVideoTrack = blackStream.getVideoTracks()[0];
+
+      prevStream?.addTrack(blackVideoTrack);
+      if (peerConnection?.signalingState !== "closed") {
+        peerConnection?.getSenders().forEach((sender) => {
+          if (sender.track?.kind !== "audio") {
+            sender.replaceTrack(blackVideoTrack);
+          }
+        });
+      }
+    }
+    setLocalStream(prevStream);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = prevStream;
+    }
+  };
+
+  const shareScreen = async () => {
+    if (!IsScreenShared) {
+      await navigator.mediaDevices
+        .getDisplayMedia({ video: true, audio: false })
+        .then((stream) => {
+          const prevStream = localStream;
+          prevStream
+            ?.getVideoTracks()
+            .map((track) => prevStream.removeTrack(track));
+          
+          stream.getVideoTracks().map((track) => {
+            prevStream?.addTrack(track);
+            if (peerConnection?.signalingState !== "closed") {
+              peerConnection?.getSenders().forEach((sender) => {
+                if (sender.track?.kind !== "audio") {
+                  sender.replaceTrack(track);
+                }
+              });
+            }
+            track.addEventListener("ended", (ev) => {
+              restartStream();
+              setIsScreenShared(false);
+            });
+          });
+
+          setLocalStream(prevStream);
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = prevStream;
+          }
+          if (!VideoEnabled) {
+            socket.emit("change-event", {
+              state: true,
+              type: "video",
+              call_id: callId,
+              userId: UserData._id,
+            });
+            setVideoEnabled(true);
+          }
+          setIsScreenShared(!IsScreenShared);
+        })
+        .catch((err) => console.log(err));
+    } else {
+      restartStream();
+      setIsScreenShared(!IsScreenShared);
     }
   };
 
@@ -890,10 +990,21 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               {!MicEnabled ? <MicOff /> : <Mic />}
             </button>
             <button
-              className="p-2 rounded-full bg-green-600 mx-2"
+              className="p-2 rounded-full bg-green-600 disabled:bg-green-700 mx-2"
               onClick={changeVideo}
+              disabled={IsScreenShared}
             >
               {!VideoEnabled ? <VideocamOffOutlined /> : <VideocamOutlined />}
+            </button>
+            <button
+              className="p-2 rounded-full bg-green-600 mx-2"
+              onClick={shareScreen}
+            >
+              {!IsScreenShared ? (
+                <ScreenSearchDesktopOutlined />
+              ) : (
+                <StopScreenShareOutlined />
+              )}
             </button>
             <button
               className="p-2 rounded-full bg-red-600 mx-2"
