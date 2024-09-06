@@ -1,11 +1,6 @@
-import {
-  ChevronRight,
-  SearchOutlined,
-  Send,
-  VideoCall,
-} from "@mui/icons-material";
 import { changeRoute } from "@/lib/slices/routeSlice/routeSlice";
 import MessageBox from "@/components/MessageBox/MessageBox";
+import sendNotification from "@/utils/sendNotification";
 import React, { useEffect, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import { useRouter } from "next/navigation";
@@ -13,6 +8,12 @@ import { useDispatch } from "react-redux";
 import { v4 as uuidv4 } from "uuid";
 import socket from "@/utils/socket";
 import Image from "next/image";
+import {
+  SearchOutlined,
+  ChevronRight,
+  VideoCall,
+  Send,
+} from "@mui/icons-material";
 
 const Chat: React.FunctionComponent<{ userData: userData }> = ({
   userData,
@@ -105,6 +106,12 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       }),
       seen: false,
     };
+    const notify: notification = {
+      _id: CurrentChat._id,
+      title: `Got Message From ${userData.name}`,
+      body: Message,
+    };
+
     await axios
       .post(
         `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/send`,
@@ -113,6 +120,8 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       .then((res: AxiosResponse) => {
         ws.emit("one-to-one-message", { _id: res.data, ...data });
       });
+
+    sendNotification(notify);
     setMessage("");
   };
 

@@ -8,9 +8,22 @@ import axios, { AxiosResponse } from "axios";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useDispatch } from "react-redux";
+import userImage from "@/public/user.png";
 import socket from "@/utils/socket";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
+
+const urlB64ToUint8Array = (base64String: string) => {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+};
 
 const Home: NextPage = () => {
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
@@ -32,20 +45,63 @@ const Home: NextPage = () => {
   const router = useRouter();
   const ws = socket;
 
+  const registerPushSubscription = async (userId: string) => {
+    const { data } = await axios.get(
+      `${process.env.NEXT_PUBLIC_SERVER_PATH}/vapidkeys`
+    );
+    const appServerKey = urlB64ToUint8Array(data.keys.publicKey);
+
+    try {
+      const serviceWorkerRegistration = await navigator.serviceWorker.register(
+        "/sw.js"
+      );
+      const pushManager = serviceWorkerRegistration.pushManager;
+      
+      setTimeout(async() => {
+        try {
+          const existingSubscription = await pushManager.getSubscription();
+          existingSubscription?.options.applicationServerKey !== appServerKey;
+          await existingSubscription?.unsubscribe();
+        } catch (err) {}
+        const newSubscription = await pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: appServerKey,
+        });
+        await sendSubscriptionToServer(newSubscription, userId);
+      }, 5000);
+    } catch (error) {
+      console.error("Push subscription error:", error);
+    }
+  };
+
+  const sendSubscriptionToServer = async (
+    subscription: PushSubscription,
+    userId: string
+  ) => {
+    try {
+      await axios.post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/subscribe`, {
+        subscription: subscription,
+        userId: userId,
+      });
+    } catch (error) {
+      console.error("Error sending subscription to server:", error);
+    }
+  };
+
   useEffect(() => {
     if (!Cookies.get("SESSION_UUID")) {
       router.push("/login");
     } else {
-      setCallAudio(new Audio("/audios/callring2.mp3"));
-      setLoading(false);
       const sessionUUID = Cookies.get("SESSION_UUID");
       if (sessionUUID && isSession === false) {
-        setIsSession(true);
         axios
           .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/profile/`, {
             sessionId: sessionUUID,
           })
           .then(async (res: AxiosResponse) => {
+            setCallAudio(new Audio("/audios/callring2.mp3"));
+            setLoading(false);
+            setIsSession(true);
             const data: userData = await res.data;
             if (data.image === undefined) {
               data.image = "/user.png";
@@ -54,6 +110,7 @@ const Home: NextPage = () => {
             }
 
             setUserData(data);
+            registerPushSubscription(data._id);
           })
           .catch((error) => {
             console.error("Error fetching profile:", error);

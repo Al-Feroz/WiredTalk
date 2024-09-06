@@ -1,5 +1,6 @@
 "use client";
 import MessageBox from "@/components/MessageBox/MessageBox";
+import sendNotification from "@/utils/sendNotification";
 import { useEffect, useRef, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import useAppSelector from "@/lib/hooks";
@@ -424,6 +425,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }),
       seen: false,
     };
+    const notify: notification = {
+      _id: CurrentChat._id,
+      title: `Got Message From ${UserData.name}`,
+      body: Message,
+    };
+
     await axios
       .post(
         `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/send`,
@@ -432,6 +439,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       .then((res: AxiosResponse) => {
         ws.emit("one-to-one-message", { _id: res.data, ...data });
       });
+
+    sendNotification(notify);
     setMessage("");
   };
 
