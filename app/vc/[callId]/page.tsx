@@ -247,11 +247,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     try {
       await stopConnection();
 
-      if (prevRoute) {
-        window.location.replace(prevRoute);
-      } else {
-        console.error("prevRoute is not defined or is invalid.");
-      }
+      window.location.replace(prevRoute ? prevRoute : "/");
     } catch (error) {
       console.error("An error occurred during endCall:", error);
     }
@@ -318,7 +314,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           prevStream
             ?.getVideoTracks()
             .map((track) => prevStream.removeTrack(track));
-          
+
           stream.getVideoTracks().map((track) => {
             prevStream?.addTrack(track);
             if (peerConnection?.signalingState !== "closed") {
@@ -427,8 +423,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     };
     const notify: notification = {
       _id: CurrentChat._id,
-      title: `Got Message From ${UserData.name}`,
+      title: `New Message From ${UserData.name}`,
+      type: "one-to-one-message",
       body: Message,
+      icon: UserData.image,
+      badge: UserData.image,
     };
 
     await axios
@@ -614,7 +613,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           pc.iceConnectionState === "closed"
         ) {
           await stopConnection();
-          window.location.replace(prevRoute);
+          window.location.replace(prevRoute ? prevRoute : "/");
         }
       });
 
@@ -726,7 +725,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       if (data.callId === callId && data.from === UserData._id) {
         setCallStatus("Call Declined.");
         CallAudio && CallAudio.pause();
-        window.location.replace(prevRoute);
+        window.location.replace(prevRoute ? prevRoute : "/");
       }
     };
 
@@ -738,7 +737,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         setCallStatus(`User is busy.`);
         CallAudio && CallAudio.pause();
         setTimeout(() => {
-          window.location.replace(prevRoute);
+          window.location.replace(prevRoute ? prevRoute : "/");
         }, 3000);
       }
     };
@@ -816,6 +815,14 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
         if (peerConnection) {
           if (data.creatorId === UserData._id && isCallStarted) {
+            const notify: notification = {
+              _id: data.receivers,
+              title: `${UserData.name} Calling...`,
+              body: window.location.origin + "/vc/" + callId + "/",
+              type: "one-to-one-call",
+              icon: UserData.image,
+              badge: UserData.image,
+            };
             setCallStatus("Calling...");
 
             ws.emit("calling", {
@@ -824,6 +831,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               to: data.receivers,
               type: data.type,
             });
+            sendNotification(notify);
 
             const remoteUserRes = await axios.post(
               `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
@@ -841,7 +849,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 setCallStatus(
                   `${remoteUserRes.data.name} did not receive your request.`
                 );
-                window.location.replace(prevRoute);
+                window.location.replace(prevRoute ? prevRoute : "/");
               }
             }, 15000);
 

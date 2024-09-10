@@ -108,8 +108,11 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     };
     const notify: notification = {
       _id: CurrentChat._id,
-      title: `Got Message From ${userData.name}`,
+      title: `New Message From ${userData.name}`,
+      type: "one-to-one-message",
       body: Message,
+      icon: userData.image,
+      badge: userData.image,
     };
 
     await axios
