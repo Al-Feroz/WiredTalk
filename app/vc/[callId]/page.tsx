@@ -138,10 +138,19 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
             tempCanvas.height = video.videoHeight;
             const tempCtx = tempCanvas.getContext("2d");
 
+            const bodyPixLoader = async ()=>{
+              if(!bodypixnet) {
+                let net = bodypixnet ? bodypixnet : await bodyPix.load();
+                setBodypixnet(net);
+                return net;
+              } else {
+                return bodypixnet;
+              }
+            }
+
             const drawMask = async () => {
               requestAnimationFrame(drawMask);
-              let net = bodypixnet ? bodypixnet : await bodyPix.load();
-              setBodypixnet(net);
+              const net = await bodyPixLoader();
 
               const segmentation = await net.segmentPerson(video);
               const mask = bodyPix.toMask(segmentation);
