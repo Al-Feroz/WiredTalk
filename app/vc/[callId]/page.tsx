@@ -63,9 +63,9 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
   const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
-  const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
-  const [RemoteVideo, setRemoteVideo] = useState<boolean>(false);
+  const [VideoEnabled, setVideoEnabled] = useState<boolean>(false);
   const [RemoteAudio, setRemoteAudio] = useState<boolean>(false);
+  const [RemoteVideo, setRemoteVideo] = useState<boolean>(true);
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
   const [callStatus, setCallStatus] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
@@ -878,14 +878,19 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
         }
   
         if (isCallStarted) {
-          // Get and handle video stream
-          const videoStream = await getMediaStream(constraints.video, "video");
-          if (videoStream instanceof MediaStream) {
-            videoStream.getTracks().forEach(track => newLocalStream.addTrack(track));
-          } else {
-            console.error("Failed to get video stream:", videoStream);
-            return;
+          const canvas = document.createElement("canvas");
+          canvas.width = 640;
+          canvas.height = 480;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
           }
+
+          const blackStream = canvas.captureStream();
+          const blackVideoTrack = blackStream.getVideoTracks()[0];
+
+          newLocalStream.addTrack(blackVideoTrack);
   
           // Update local stream and video element
           setLocalStream(newLocalStream);
