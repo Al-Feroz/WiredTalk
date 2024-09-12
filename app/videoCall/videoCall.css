@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #ebebeb;
+}
+
+canvas {
+  background-image: url("/background.jpeg");
+  background-repeat: no-repeat;
+  background-size: cover;
+  margin-bottom: 10px;
+}
