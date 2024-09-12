@@ -1,17 +1,14 @@
+
 "use client";
 import MessageBox from "@/components/MessageBox/MessageBox";
 import sendNotification from "@/utils/sendNotification";
-import * as bodyPix from "@tensorflow-models/body-pix";
 import { useEffect, useRef, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import useAppSelector from "@/lib/hooks";
 import { RootState } from "@/lib/store";
-import "@tensorflow/tfjs-backend-webgl";
 import socket from "@/utils/socket";
-import "@tensorflow/tfjs-converter";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
-import "@tensorflow/tfjs-core";
 import {
   ScreenSearchDesktopOutlined,
   StopScreenShareOutlined,
@@ -29,7 +26,7 @@ const peerConnectionConfig: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-const videoCall: NextPage<{ params: { callId: string } }> = ({
+const VC: NextPage<{ params: { callId: string } }> = ({
   params: { callId },
 }) => {
   const [UserData, setUserData] = useState<userData>({
@@ -56,16 +53,15 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
   const prevRoute = useAppSelector(
     (state: RootState) => state.route.currentRoute
   );
-  const [bodypixnet, setBodypixnet] = useState<bodyPix.BodyPix | null>(null);
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
-  const [VideoEnabled, setVideoEnabled] = useState<boolean>(false);
+  const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
+  const [RemoteVideo, setRemoteVideo] = useState<boolean>(false);
   const [RemoteAudio, setRemoteAudio] = useState<boolean>(false);
-  const [RemoteVideo, setRemoteVideo] = useState<boolean>(true);
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
   const [callStatus, setCallStatus] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
@@ -106,91 +102,21 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
     constraint: any,
     type: string
   ): Promise<MediaStream | Error> => {
+    let constraints: { video?: any; audio?: any } = {};
+
+    if (type === "video") {
+      constraints = { video: constraint };
+    } else if (type === "audio") {
+      constraints = { audio: constraint };
+    }
+
     try {
-      let constraints: { video?: any; audio?: any } = {};
-  
-      switch (type) {
-        case "video":
-          constraints = { video: constraint };
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
-          const canvas = document.createElement("canvas");
-  
-          const context = canvas.getContext("2d");
-          const video = document.createElement("video");
-          video.srcObject = stream;
-          video.play();
-
-          // Create a Promise to resolve when the video is ready
-          const videoReady = new Promise<void>((resolve) => {
-            video.addEventListener("canplay", () => {
-              canvas.width = video.videoWidth;
-              canvas.height = video.videoHeight;
-              context?.clearRect(0, 0, canvas.width, canvas.height);
-              resolve();
-            });
-          });
-
-          // Create a Promise to handle mask drawing
-          const maskDrawing = async () => {
-            // Create tempCanvas
-            const tempCanvas = document.createElement("canvas");
-            tempCanvas.width = video.videoWidth;
-            tempCanvas.height = video.videoHeight;
-            const tempCtx = tempCanvas.getContext("2d");
-
-            const bodyPixLoader = async ()=>{
-              if(!bodypixnet) {
-                let net = bodypixnet ? bodypixnet : await bodyPix.load();
-                setBodypixnet(net);
-                return net;
-              } else {
-                return bodypixnet;
-              }
-            }
-
-            const drawMask = async () => {
-              requestAnimationFrame(drawMask);
-              const net = await bodyPixLoader();
-
-              const segmentation = await net.segmentPerson(video);
-              const mask = bodyPix.toMask(segmentation);
-              tempCtx?.putImageData(mask, 0, 0);
-
-              if (context) {
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                context.save();
-                context.globalCompositeOperation = "destination-out";
-                context.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
-                context.restore();
-              } else {
-                console.log("Canvas context is not available");
-              }
-            };
-
-            drawMask();
-          };
-
-          // Wait for video to be ready and start drawing
-          await videoReady;
-          maskDrawing();
-  
-          // Return the canvas stream
-          return canvas.captureStream();
-  
-        case "audio":
-          constraints = { audio: constraint };
-          const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-          return newStream;
-  
-        default:
-          // Handle invalid type
-          return new Error(`Invalid type: ${type}`);
-      }
-    } catch (err: any) {
-      return new Error(`An Error Occurred: ${err.message}`);
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      return newStream;
+    } catch (err) {
+      return Error("an Error Occurred");
     }
   };
-  
 
   function createSilentAudioStream() {
     const audioContext = new AudioContext();
@@ -667,8 +593,7 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
       }
 
       pc.ontrack = (event) => {
-        if (event.track.kind !== "audio") {
-          console.log(event.track.kind);
+        if (event.track.kind == "video") {
           remoteStream.getVideoTracks().map((track) => track.stop());
           remoteStream.addTrack(event.track);
         } else if (event.track.kind == "audio") {
@@ -855,122 +780,121 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
       setIsCallStarted(true);
     }
 
-    let timeoutId: NodeJS.Timeout | null = null;
     const fetchDataAndSetupCall = async () => {
       try {
-        // Fetch call data
-        const res = await axios.get(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/call/${callId}`);
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/call/${callId}`
+        );
         const data = res.data;
-  
-        // Get media constraints
+
+        const stream = new MediaStream();
+
         const constraints = await getConstraints();
-  
-        // Initialize new MediaStream
-        const newLocalStream = new MediaStream();
-  
-        // Get and handle audio stream
-        const audioStream = await getMediaStream(constraints.audio, "audio");
+        const audioStream: MediaStream | Error = await getMediaStream(
+          constraints.audio,
+          "audio"
+        );
+        const videoStream: MediaStream | Error = await getMediaStream(
+          constraints.video,
+          "video"
+        );
+
         if (audioStream instanceof MediaStream) {
-          audioStream.getTracks().forEach(track => newLocalStream.addTrack(track));
-        } else {
-          console.error("Failed to get audio stream:", audioStream);
-          return;
+          audioStream.getTracks().map((track) => stream.addTrack(track));
         }
-  
+
+        if (videoStream instanceof MediaStream) {
+          videoStream.getTracks().map((track) => stream.addTrack(track));
+        }
+
         if (isCallStarted) {
-          const canvas = document.createElement("canvas");
-          canvas.width = 640;
-          canvas.height = 480;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.fillStyle = "black";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
-
-          const blackStream = canvas.captureStream();
-          const blackVideoTrack = blackStream.getVideoTracks()[0];
-
-          newLocalStream.addTrack(blackVideoTrack);
-  
-          // Update local stream and video element
-          setLocalStream(newLocalStream);
+          setLocalStream(stream);
           if (localVideoRef.current) {
-            localVideoRef.current.srcObject = newLocalStream;
+            localVideoRef.current.srcObject = stream;
           }
-  
-          // Handle WebRTC peer connection and notifications
-          if (peerConnection) {
-            if (data.creatorId === UserData._id && isCallStarted) {
-              const notify: notification = {
-                _id: data.receivers,
-                title: `${UserData.name} Calling...`,
-                body: window.location.origin + "/vc/" + callId + "/",
-                type: "one-to-one-call",
-                icon: UserData.image,
-                badge: UserData.image,
-              };
-              setCallStatus("Calling...");
-  
-              ws.emit("calling", {
-                callId,
-                from: UserData._id,
-                to: data.receivers,
-                type: data.type,
-              });
-              sendNotification(notify);
-  
-              const remoteUserRes = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`, { userId: data.receivers });
-              setCurrentChat(remoteUserRes.data);
-              getMessages(remoteUserRes.data._id);
-              CallAudio && CallAudio.play();
-  
-              timeoutId = setTimeout(() => {
-                if (callStatusRef.current === "Calling..." || callStatusRef.current === "Ringing...") {
-                  setCallStatus(`${remoteUserRes.data.name} did not receive your request.`);
-                  window.location.replace(prevRoute ? prevRoute : "/");
-                }
-              }, 30000);
-            } else if (data.type === "single" && data.receivers === UserData._id) {
-              ws.emit("accepting", {
-                callId,
-                from: UserData._id,
-                to: data.creatorId,
-                type: data.type,
-              });
-  
-              const offer = await peerConnection.createOffer();
-              await peerConnection.setLocalDescription(offer);
-              ws.emit("offer", {
-                offer,
-                from: UserData._id,
-                to: data.creatorId,
-                type: data.type,
-              });
-  
-              const creatorUserRes = await axios.post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`, { userId: data.creatorId });
-              setCurrentChat(creatorUserRes.data);
-              getMessages(creatorUserRes.data._id);
-            }
-  
-            newLocalStream.getTracks().forEach(track => {
-              if (peerConnection.signalingState !== "closed") {
-                peerConnection.addTrack(track, newLocalStream);
-              }
+        }
+
+        if (peerConnection) {
+          if (data.creatorId === UserData._id && isCallStarted) {
+            const notify: notification = {
+              _id: data.receivers,
+              title: `${UserData.name} Calling...`,
+              body: window.location.origin + "/vc/" + callId + "/",
+              type: "one-to-one-call",
+              icon: UserData.image,
+              badge: UserData.image,
+            };
+            setCallStatus("Calling...");
+
+            ws.emit("calling", {
+              callId,
+              from: UserData._id,
+              to: data.receivers,
+              type: data.type,
             });
+            sendNotification(notify);
+
+            const remoteUserRes = await axios.post(
+              `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
+              { userId: data.receivers }
+            );
+            setCurrentChat(remoteUserRes.data);
+            getMessages(remoteUserRes.data._id);
+            CallAudio && CallAudio.play();
+
+            const timeoutId = setTimeout(() => {
+              if (
+                callStatusRef.current === "Calling..." ||
+                callStatusRef.current === "Ringing..."
+              ) {
+                setCallStatus(
+                  `${remoteUserRes.data.name} did not receive your request.`
+                );
+                window.location.replace(prevRoute ? prevRoute : "/");
+              }
+            }, 15000);
+
+            return () => clearTimeout(timeoutId);
+          } else if (
+            data.type === "single" &&
+            data.receivers === UserData._id
+          ) {
+            ws.emit("accepting", {
+              callId,
+              from: UserData._id,
+              to: data.creatorId,
+              type: data.type,
+            });
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            ws.emit("offer", {
+              offer,
+              from: UserData._id,
+              to: data.creatorId,
+              type: data.type,
+            });
+
+            const creatorUserRes = await axios.post(
+              `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/userId`,
+              { userId: data.creatorId }
+            );
+            setCurrentChat(creatorUserRes.data);
+            getMessages(creatorUserRes.data._id);
           }
+
+          stream.getTracks().forEach((track) => {
+            if (peerConnection.signalingState !== "closed") {
+              peerConnection.addTrack(track, stream);
+            }
+          });
         }
       } catch (error) {
         console.error("Error getting media stream or handling call:", error);
       }
     };
-  
+
     fetchDataAndSetupCall();
-  
-    // Cleanup function to stop all tracks in the stream
-    return () => {
-      localStream?.getTracks().forEach(track => track.stop());
-      if (timeoutId) clearTimeout(timeoutId);
-    };
   }, [callId, peerConnection, UserData._id, isCallStarted]);
 
   return (
@@ -1041,12 +965,12 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
               }}
             />
           </div>
-          <div className="relative w-[100%] h-full flex flex-col items-center justify-center bg-neutral-300 p-2">
+          <div className="relative w-full h-full flex flex-col items-center justify-center bg-neutral-300 p-2">
             <video
               ref={remoteVideoRef}
               playsInline
               autoPlay
-              className="rounded-md w-auto h-fit bg-black"
+              className="rounded-md w-auto h-auto"
             />
             <div className="absolute top-0 right-0 left-0 bottom-0 flex justify-center items-center">
               <span
@@ -1142,4 +1066,4 @@ const videoCall: NextPage<{ params: { callId: string } }> = ({
   );
 };
 
-export default videoCall;
+export default VC;
