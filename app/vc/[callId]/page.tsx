@@ -1,4 +1,3 @@
-
 "use client";
 import MessageBox from "@/components/MessageBox/MessageBox";
 import sendNotification from "@/utils/sendNotification";
@@ -179,69 +178,73 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   };
 
   const changeVideo = async () => {
-    const newState = !VideoEnabled;
-    const stream = localStream;
-    if (!stream) return;
+    try {
+      const newState = !VideoEnabled;
+      const stream = localStream;
+      if (!stream) return;
 
-    if (newState) {
-      const constraints = await getConstraints();
-      const videoStream: MediaStream | Error = await getMediaStream(
-        constraints.video,
-        "video"
-      );
-      if (videoStream instanceof MediaStream) {
+      if (newState) {
+        const constraints = await getConstraints();
+        const videoStream: MediaStream | Error = await getMediaStream(
+          constraints.video,
+          "video"
+        );
+        if (videoStream instanceof MediaStream) {
+          stream.getVideoTracks().forEach((track) => {
+            stream.removeTrack(track);
+          });
+
+          videoStream.getVideoTracks().forEach((track) => {
+            stream.addTrack(track);
+            if (peerConnection?.signalingState !== "closed") {
+              peerConnection?.getSenders().forEach((sender) => {
+                if (sender.track?.kind !== "audio") {
+                  sender.replaceTrack(track);
+                }
+              });
+            }
+          });
+        }
+      } else {
+        const canvas = document.createElement("canvas");
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "black";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        const blackStream = canvas.captureStream();
+        const blackVideoTrack = blackStream.getVideoTracks()[0];
+
         stream.getVideoTracks().forEach((track) => {
           stream.removeTrack(track);
         });
 
-        videoStream.getVideoTracks().forEach((track) => {
-          stream.addTrack(track);
-          if (peerConnection?.signalingState !== "closed") {
-            peerConnection?.getSenders().forEach((sender) => {
-              if (sender.track?.kind !== "audio") {
-                sender.replaceTrack(track);
-              }
-            });
-          }
-        });
-      }
-    } else {
-      const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 480;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.fillStyle = "black";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (peerConnection?.signalingState !== "closed") {
+          peerConnection?.getSenders().forEach((sender) => {
+            if (sender.track?.kind !== "audio") {
+              sender.replaceTrack(blackVideoTrack);
+            }
+          });
+        }
       }
 
-      const blackStream = canvas.captureStream();
-      const blackVideoTrack = blackStream.getVideoTracks()[0];
-
-      stream.getVideoTracks().forEach((track) => {
-        stream.removeTrack(track);
+      setLocalStream(stream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+      socket.emit("change-event", {
+        state: newState,
+        type: "video",
+        call_id: callId,
+        userId: UserData._id,
       });
-
-      if (peerConnection?.signalingState !== "closed") {
-        peerConnection?.getSenders().forEach((sender) => {
-          if (sender.track?.kind !== "audio") {
-            sender.replaceTrack(blackVideoTrack);
-          }
-        });
-      }
+      setVideoEnabled(newState);
+    } catch (err) {
+      console.log(err);
     }
-
-    setLocalStream(stream);
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-    }
-    socket.emit("change-event", {
-      state: newState,
-      type: "video",
-      call_id: callId,
-      userId: UserData._id,
-    });
-    setVideoEnabled(newState);
   };
 
   const endCall = async () => {
@@ -819,6 +822,14 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           const blackVideoTrack = blackStream.getVideoTracks()[0];
 
           stream.addTrack(blackVideoTrack);
+
+          socket.emit("change-event", {
+            state: !VideoEnabled,
+            type: "video",
+            call_id: callId,
+            userId: UserData._id,
+          });
+          setVideoEnabled(!VideoEnabled);
         }
 
         if (isCallStarted) {
