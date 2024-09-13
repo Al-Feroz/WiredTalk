@@ -805,6 +805,20 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
         if (videoStream instanceof MediaStream) {
           videoStream.getTracks().map((track) => stream.addTrack(track));
+        } else {
+          const canvas = document.createElement("canvas");
+          canvas.width = 640;
+          canvas.height = 480;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "black";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+
+          const blackStream = canvas.captureStream();
+          const blackVideoTrack = blackStream.getVideoTracks()[0];
+
+          stream.addTrack(blackVideoTrack);
         }
 
         if (isCallStarted) {
