@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import useAppSelector from "@/lib/hooks";
 import { RootState } from "@/lib/store";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
 import socket from "@/utils/socket";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
@@ -19,6 +20,7 @@ import {
   Close,
   Send,
   Mic,
+  RadioButtonChecked,
 } from "@mui/icons-material";
 
 const peerConnectionConfig: RTCConfiguration = {
@@ -52,15 +54,23 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const prevRoute = useAppSelector(
     (state: RootState) => state.route.currentRoute
   );
+  const [RecorderCanvas, setRecorderCanvas] =
+    useState<HTMLCanvasElement | null>(null);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
+    null
+  );
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [IsCallRecording, setIsCallRecording] = useState<boolean>(false);
   const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
+  const [RecordedBy, setRecordedBy] = useState<string | null>(null);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
   const [RemoteVideo, setRemoteVideo] = useState<boolean>(false);
   const [RemoteAudio, setRemoteAudio] = useState<boolean>(false);
+  const [IsRecording, setIsRecording] = useState<boolean>(false);
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
   const [callStatus, setCallStatus] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
@@ -80,6 +90,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       video: {
         deviceId: devices.filter((device) => device.kind === "videoinput")[0]
           ?.deviceId,
+        width: { min: 640, ideal: 1920, max: 1920 },
+        height: { min: 400, ideal: 1080 },
+        facingMode: { exact: "user" },
       },
       audio: {
         deviceId: devices.filter((device) => device.kind === "audioinput")[0]
@@ -207,8 +220,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         }
       } else {
         const canvas = document.createElement("canvas");
-        canvas.width = 640;
-        canvas.height = 480;
+        canvas.width = 1920;
+        canvas.height = 1080;
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.fillStyle = "black";
@@ -283,8 +296,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     } else {
       const canvas = document.createElement("canvas");
-      canvas.width = 640;
-      canvas.height = 480;
+      canvas.width = 1920;
+      canvas.height = 1080;
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.fillStyle = "black";
@@ -557,6 +570,202 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     }
   };
 
+  const recordingHandle = (data: {
+    call_id: string;
+    recording: boolean;
+    userId: string;
+  }) => {
+    if (data.call_id === callId && data.userId === CurrentChat._id) {
+      setIsCallRecording(data.recording);
+      setRecordedBy(CurrentChat._id);
+    }
+  };
+
+  useEffect(() => {
+    const ffmpeg = new FFmpeg();
+
+    const loadFFmpeg = async () => {
+      if (!localStream || !RemoteStream) return;
+      const canvas = RecorderCanvas || document.createElement("canvas");
+      !RecorderCanvas && setRecorderCanvas(canvas);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const audioContext = new AudioContext();
+
+      const localAudioTracks = localStream.getAudioTracks();
+      const remoteAudioTracks = RemoteStream.getAudioTracks();
+
+      let localAudioSource, remoteAudioSource;
+
+      if (localAudioTracks.length > 0) {
+        localAudioSource = audioContext.createMediaStreamSource(localStream);
+      }
+
+      if (remoteAudioTracks.length > 0) {
+        remoteAudioSource = audioContext.createMediaStreamSource(RemoteStream);
+      }
+
+      const destination = audioContext.createMediaStreamDestination();
+
+      if (localAudioSource) {
+        localAudioSource.connect(destination);
+      }
+      if (remoteAudioSource) {
+        remoteAudioSource.connect(destination);
+      }
+
+      const combinedAudioStream = destination.stream;
+
+      const mainStream = new MediaStream([
+        ...canvas.captureStream().getTracks(),
+        ...combinedAudioStream.getTracks(),
+      ]);
+
+      const recorder = mediaRecorder || new MediaRecorder(mainStream);
+      !mediaRecorder && setMediaRecorder(recorder);
+
+      const localVideo = document.createElement("video");
+      localVideo.srcObject = localStream;
+      localVideo.autoplay = true;
+
+      const remoteVideo = document.createElement("video");
+      remoteVideo.srcObject = RemoteStream;
+      remoteVideo.autoplay = true;
+
+      const drawFrame = () => {
+        canvas.width =
+          (localVideo.videoWidth || 0) + (remoteVideo.videoWidth || 0) + 100;
+        canvas.height =
+          Math.max(localVideo.videoHeight || 0, remoteVideo.videoHeight || 0) +
+          100;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.drawImage(
+          localVideo,
+          50,
+          50,
+          canvas.width / 2 - 50,
+          canvas.height - 100
+        );
+        ctx.drawImage(
+          remoteVideo,
+          canvas.width / 2,
+          50,
+          canvas.width / 2 - 50,
+          canvas.height - 100
+        );
+        
+
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(UserData.name, canvas.width / 2 - 100, canvas.height-50);
+        ctx.fillText(CurrentChat.name, canvas.width - 150, canvas.height-50);
+
+        requestAnimationFrame(drawFrame);
+      };
+
+      try {
+        if (!IsRecording) {
+          await ffmpeg.load();
+
+          let chunks: Blob[] = [];
+
+          recorder.ondataavailable = (ev) => {
+            if (ev.data.size > 0) {
+              chunks.push(ev.data);
+            }
+          };
+
+          recorder.onstop = async () => {
+            try {
+              const blob = new Blob(chunks, { type: "video/webm" });
+              chunks = [];
+
+              const arrayBuffer = await blob.arrayBuffer();
+              await ffmpeg.writeFile("output.mp4", new Uint8Array(arrayBuffer));
+              const mp4URL = URL.createObjectURL(blob);
+
+              const currentDate = new Date();
+
+              const day = String(currentDate.getDate()).padStart(2, "0");
+              const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+              const year = currentDate.getFullYear();
+
+              const hours = String(currentDate.getHours()).padStart(2, "0");
+              const minutes = String(currentDate.getMinutes()).padStart(2, "0");
+              const seconds = String(currentDate.getSeconds()).padStart(2, "0");
+
+              const formattedDate = `${day}-${month}-${year}_${hours}:${minutes}:${seconds}`;
+              const filename = `wiredtalk-call-recording_${formattedDate}.mp4`;
+              const link = document.createElement("a");
+              link.href = mp4URL;
+              link.download = filename;
+              link.style.display = "none";
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+
+              URL.revokeObjectURL(mp4URL);
+            } catch (err) {
+              console.error("Error processing the video:", err);
+            }
+          };
+
+          recorder.onerror = (e) => {
+            console.error("Error during recording:", e);
+          };
+        }
+
+        if (IsCallRecording && !RecordedBy && !IsRecording) {
+          drawFrame();
+          recorder.start();
+          setIsRecording(true);
+          setRecordedBy(UserData._id);
+          ws.emit("recording", {
+            call_id: callId,
+            recording: true,
+            userId: UserData._id,
+          });
+        }
+
+        if (
+          RecordedBy === UserData._id &&
+          !IsCallRecording &&
+          IsRecording &&
+          recorder.state === "recording"
+        ) {
+          recorder.stop();
+          ws.emit("recording", {
+            call_id: callId,
+            recording: false,
+            userId: UserData._id,
+          });
+        }
+
+        return;
+      } catch (error) {
+        return console.error("Error loading FFmpeg:", error);
+      }
+    };
+
+    loadFFmpeg();
+  }, [
+    callId,
+    localStream,
+    RemoteStream,
+    RecorderCanvas,
+    setRecorderCanvas,
+    IsCallRecording,
+    setIsCallRecording,
+    IsRecording,
+    setIsRecording,
+    mediaRecorder,
+    setMediaRecorder,
+  ]);
+
   useEffect(() => {
     callStatusRef.current = callStatus;
   }, [callStatus]);
@@ -634,12 +843,14 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, []);
 
   useEffect(() => {
+    ws.on("recording", recordingHandle);
     ws.on("message-read", messageStatusHandle);
     ws.on("one-to-one-edited", OneToOneEdited);
     ws.on("one-to-one-delete", OneToOneDelete);
     ws.on("one-to-one-message", OneToOneMessage);
 
     return () => {
+      ws.off("recording", recordingHandle);
       ws.off("message-read", messageStatusHandle);
       ws.off("one-to-one-edited", OneToOneEdited);
       ws.off("one-to-one-delete", OneToOneDelete);
@@ -810,8 +1021,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           videoStream.getTracks().map((track) => stream.addTrack(track));
         } else {
           const canvas = document.createElement("canvas");
-          canvas.width = 640;
-          canvas.height = 480;
+          canvas.width = 1920;
+          canvas.height = 1080;
           const ctx = canvas.getContext("2d");
           if (ctx) {
             ctx.fillStyle = "black";
@@ -974,6 +1185,23 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </button>
         </div>
       </div>
+      {IsCallRecording && (
+        <div className="relative z-[500]">
+          <div className="absolute top-5 left-0 right-0">
+            <div className="mx-auto w-fit h-fit px-5 py-2 bg-gray-900 bg-opacity-50 drop-shadow-md rounded">
+              <p className="text-white font-light">
+                Call is recording by{" "}
+                {RecordedBy === UserData._id ? UserData.name : CurrentChat.name}
+              </p>
+              {RecordedBy === UserData._id && (
+                <button className="text-blue-700 text-sm mt-2" onClick={() => setIsCallRecording(!IsCallRecording)}>
+                  Stop Recoring
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="w-[100vw] h-[100vh]">
         <div className="relative w-full h-[85%]">
           <div className="absolute bottom-6 right-10 w-[25%] h-auto z-[100]">
@@ -1038,6 +1266,13 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               disabled={IsScreenShared}
             >
               {!VideoEnabled ? <VideocamOffOutlined /> : <VideocamOutlined />}
+            </button>
+            <button
+              className="p-2 rounded-full bg-green-600 mx-2"
+              onClick={() => setIsCallRecording(!IsCallRecording)}
+              disabled={IsCallRecording}
+            >
+              <RadioButtonChecked />
             </button>
             <button
               className="p-2 rounded-full bg-green-600 mx-2"
