@@ -152,39 +152,36 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     const stream = localStream;
     if (!stream) return;
 
-    console.log(newState);
     if (newState) {
       const constraints = await getConstraints();
-      console.log(constraints);
       const audioStream = await getMediaStream(constraints.audio, "audio");
-      console.log(audioStream);
+
       if (audioStream instanceof MediaStream) {
-        stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
-        console.log(stream.getAudioTracks());
+        const existingTracks = stream.getAudioTracks();
+        existingTracks.forEach((track) => {
+          stream.removeTrack(track);
+        });
+
         audioStream.getAudioTracks().forEach((track) => {
           stream.addTrack(track);
-          if (peerConnection && peerConnection?.signalingState !== "closed") {
+          if (peerConnection && peerConnection.signalingState !== "closed") {
             peerConnection
               .getSenders()
               .filter((sender) => sender.track?.kind === "audio")
               .forEach((sender) => sender.replaceTrack(track));
-              console.log(peerConnection?.getSenders().filter(sender=> sender.track?.kind === "audio"));
           }
         });
       }
     } else {
-      stream.getAudioTracks().forEach((track) => {
-        stream.removeTrack(track)
-      });
-      console.log(stream.getAudioTracks());
+      stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+
       const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
       stream.addTrack(silentAudioTrack);
-      if (peerConnection && peerConnection?.signalingState !== "closed") {
+      if (peerConnection && peerConnection.signalingState !== "closed") {
         peerConnection
-        .getSenders()
-        .filter((sender) => sender.track?.kind === "audio")
-        .forEach((sender) => sender.replaceTrack(silentAudioTrack));
-        console.log(peerConnection?.getSenders().filter(sender=> sender.track?.id !== silentAudioTrack.id));
+          .getSenders()
+          .filter((sender) => sender.track?.kind === "audio")
+          .forEach((sender) => sender.replaceTrack(silentAudioTrack));
       }
     }
 
@@ -665,13 +662,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           canvas.width / 2 - 50,
           canvas.height - 100
         );
-        
 
         ctx.fillStyle = "white";
         ctx.font = "20px Arial";
         ctx.textAlign = "center";
-        ctx.fillText(UserData.name, canvas.width / 2 - 100, canvas.height-50);
-        ctx.fillText(CurrentChat.name, canvas.width - 150, canvas.height-50);
+        ctx.fillText(UserData.name, canvas.width / 2 - 100, canvas.height - 50);
+        ctx.fillText(CurrentChat.name, canvas.width - 150, canvas.height - 50);
 
         requestAnimationFrame(drawFrame);
       };
@@ -1203,7 +1199,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 {RecordedBy === UserData._id ? UserData.name : CurrentChat.name}
               </p>
               {RecordedBy === UserData._id && (
-                <button className="text-blue-700 text-sm mt-2" onClick={() => setIsCallRecording(!IsCallRecording)}>
+                <button
+                  className="text-blue-700 text-sm mt-2"
+                  onClick={() => setIsCallRecording(!IsCallRecording)}
+                >
                   Stop Recoring
                 </button>
               )}
@@ -1216,9 +1215,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           <div className="absolute bottom-6 right-10 w-[25%] h-auto z-[100]">
             <video
               ref={localVideoRef}
+              disablePictureInPicture
               playsInline
               autoPlay
-              muted
               className="rounded-md shadow-white drop-shadow-xl bg-black"
               style={{
                 width: "100%",
@@ -1230,6 +1229,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           <div className="relative w-full h-full flex flex-col items-center justify-center bg-neutral-300 p-2">
             <video
               ref={remoteVideoRef}
+              disablePictureInPicture
               playsInline
               autoPlay
               className="rounded-md w-auto h-auto"
