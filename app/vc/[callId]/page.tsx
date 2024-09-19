@@ -184,7 +184,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         .getSenders()
         .filter((sender) => sender.track?.kind === "audio")
         .forEach((sender) => sender.replaceTrack(silentAudioTrack));
-        console.log(peerConnection?.getSenders().filter(sender=> sender.track?.kind === "audio"));
+        console.log(peerConnection?.getSenders().filter(sender=> sender.track?.id !== silentAudioTrack.id));
       }
     }
 
