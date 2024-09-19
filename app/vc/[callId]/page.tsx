@@ -152,11 +152,15 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     const stream = localStream;
     if (!stream) return;
 
+    console.log(newState);
     if (newState) {
       const constraints = await getConstraints();
+      console.log(constraints);
       const audioStream = await getMediaStream(constraints.audio, "audio");
+      console.log(audioStream);
       if (audioStream instanceof MediaStream) {
         stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+        console.log(stream.getAudioTracks());
         audioStream.getAudioTracks().forEach((track) => {
           stream.addTrack(track);
           if (peerConnection && peerConnection?.signalingState !== "closed") {
@@ -164,18 +168,23 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               .getSenders()
               .filter((sender) => sender.track?.kind === "audio")
               .forEach((sender) => sender.replaceTrack(track));
+              console.log(peerConnection?.getSenders().filter(sender=> sender.track?.kind === "audio"));
           }
         });
       }
     } else {
-      stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+      stream.getAudioTracks().forEach((track) => {
+        stream.removeTrack(track)
+      });
+      console.log(stream.getAudioTracks());
       const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
       stream.addTrack(silentAudioTrack);
       if (peerConnection && peerConnection?.signalingState !== "closed") {
         peerConnection
-          .getSenders()
-          .filter((sender) => sender.track?.kind === "audio")
-          .forEach((sender) => sender.replaceTrack(silentAudioTrack));
+        .getSenders()
+        .filter((sender) => sender.track?.kind === "audio")
+        .forEach((sender) => sender.replaceTrack(silentAudioTrack));
+        console.log(peerConnection?.getSenders().filter(sender=> sender.track?.kind === "audio"));
       }
     }
 
