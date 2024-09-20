@@ -782,9 +782,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   useEffect(() => {
     const videoElement = localVideoRef.current;
-  
+    console.log(videoElement);
+    
     if (videoElement) {
       videoElement.muted = true;
+      console.log(videoElement.muted);
     }
   }, [localVideoRef]);
 
