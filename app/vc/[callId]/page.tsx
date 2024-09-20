@@ -777,6 +777,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [callStatus]);
 
   useEffect(() => {
+    if(localVideoRef.current) localVideoRef.current.muted = true;
+  }, []);
+
+  useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
     if (sessionUUID) {
       setCallAudio(new Audio("/audios/callring2.mp3"));
