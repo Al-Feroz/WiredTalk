@@ -583,7 +583,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }) => {
     if (data.call_id === callId && data.userId === CurrentChat._id) {
       setIsCallRecording(data.recording);
-      setRecordedBy(CurrentChat._id);
+      !data.recording ? setRecordedBy(null) : setRecordedBy(CurrentChat._id);
     }
   };
 
@@ -743,6 +743,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           recorder.state === "recording"
         ) {
           recorder.stop();
+          setRecordedBy(null);
           ws.emit("recording", {
             call_id: callId,
             recording: false,
@@ -1277,7 +1278,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               {!VideoEnabled ? <VideocamOffOutlined /> : <VideocamOutlined />}
             </button>
             <button
-              className="p-2 rounded-full bg-green-600 mx-2"
+              className="p-2 rounded-full bg-green-600 disabled:bg-green-700 mx-2"
               onClick={() => setIsCallRecording(!IsCallRecording)}
               disabled={IsCallRecording}
             >
