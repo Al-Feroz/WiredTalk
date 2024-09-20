@@ -148,55 +148,51 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }
 
   const changeAudio = async () => {
-    try {
-      const newState = !MicEnabled;
-      const stream = localStream;
-      if (!stream) return;
+    const newState = !MicEnabled;
+    const stream = localStream;
+    if (!stream) return;
 
-      if (newState) {
-        const constraints = await getConstraints();
-        const audioStream = await getMediaStream(constraints.audio, "audio");
+    if (newState) {
+      const constraints = await getConstraints();
+      const audioStream = await getMediaStream(constraints.audio, "audio");
 
-        if (audioStream instanceof MediaStream) {
-          stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
-          peerConnection
-            ?.getSenders()
-            .filter((sender) => sender.track?.kind === "audio")
-            .map((sender) => {
-              peerConnection.removeTrack(sender)
-            });
+      if (audioStream instanceof MediaStream) {
+        const existingTracks = stream.getAudioTracks();
+        existingTracks.forEach((track) => {
+          stream.removeTrack(track);
+        });
 
-          audioStream.getAudioTracks().forEach((track) => {
-            stream.addTrack(track);
-            peerConnection?.addTrack(track);
-          });
-        }
-      } else {
-        stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
-        peerConnection
-          ?.getSenders()
-          .filter((sender) => sender.track?.kind === "audio")
-          .map((sender) => {
-            peerConnection.removeTrack(sender);
-          });
-
-        const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
-        stream.addTrack(silentAudioTrack);
-        peerConnection?.addTrack(silentAudioTrack);
+        audioStream.getAudioTracks().forEach((track) => {
+          stream.addTrack(track);
+          if (peerConnection && peerConnection.signalingState !== "closed") {
+            peerConnection
+              .getSenders()
+              .filter((sender) => sender.track?.kind === "audio")
+              .forEach((sender) => sender.replaceTrack(track));
+          }
+        });
       }
+    } else {
+      stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
 
-      setLocalStream(stream);
-      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      socket.emit("change-event", {
-        state: newState,
-        type: "audio",
-        call_id: callId,
-        userId: UserData._id,
-      });
-      setMicEnabled(newState);
-    } catch (err) {
-      console.log(err);
+      const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
+      stream.addTrack(silentAudioTrack);
+      if (peerConnection && peerConnection.signalingState !== "closed") {
+        peerConnection
+          .getSenders()
+          .filter((sender) => sender.track?.kind === "audio")
+          .forEach((sender) => sender.replaceTrack(silentAudioTrack));
+      }
     }
+
+    setLocalStream(stream);
+    socket.emit("change-event", {
+      state: newState,
+      type: "audio",
+      call_id: callId,
+      userId: UserData._id,
+    });
+    setMicEnabled(newState);
   };
 
   const changeVideo = async () => {
@@ -245,6 +241,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         stream.addTrack(blackVideoTrack)
         if (peerConnection?.signalingState !== "closed") {
           peerConnection?.getSenders().forEach((sender) => {
+
             if (sender.track?.kind === "video") {
               sender.replaceTrack(blackVideoTrack);
             }
@@ -254,7 +251,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
       setLocalStream(stream);
       if (localVideoRef.current) {
-        localVideoRef.current.srcObject = stream;
+        localVideoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
       }
       socket.emit("change-event", {
         state: newState,
@@ -325,8 +322,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     }
     setLocalStream(prevStream);
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = prevStream;
+    if (localVideoRef.current && prevStream) {
+      localVideoRef.current.srcObject = new MediaStream(prevStream.getVideoTracks());
     }
   };
 
@@ -356,8 +353,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           });
 
           setLocalStream(prevStream);
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = prevStream;
+          if (localVideoRef.current && prevStream) {
+            localVideoRef.current.srcObject = new MediaStream(prevStream.getVideoTracks());
           }
           if (!VideoEnabled) {
             socket.emit("change-event", {
@@ -779,13 +776,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [callStatus]);
 
   useEffect(() => {
-    if(localVideoRef.current) {
-      localVideoRef.current.defaultMuted = true;
-      localVideoRef.current.muted = true;
-    };
-  }, [localVideoRef]);
-
-  useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
     if (sessionUUID) {
       setCallAudio(new Audio("/audios/callring2.mp3"));
@@ -1061,7 +1051,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (isCallStarted) {
           setLocalStream(stream);
           if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
+            localVideoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
           }
         }
 
