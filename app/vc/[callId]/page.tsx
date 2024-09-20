@@ -781,8 +781,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [callStatus]);
 
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.muted = true;
-  }, [localVideoRef.current]);
+    const videoElement = localVideoRef.current;
+  
+    if (videoElement) {
+      videoElement.muted = true;
+    }
+  }, [localVideoRef]);
 
   useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
