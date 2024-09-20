@@ -158,32 +158,31 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         const audioStream = await getMediaStream(constraints.audio, "audio");
 
         if (audioStream instanceof MediaStream) {
-          const existingTracks = stream.getAudioTracks();
-          existingTracks.forEach((track) => {
-            stream.removeTrack(track);
-          });
+          stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+          peerConnection
+            ?.getSenders()
+            .filter((sender) => sender.track?.kind === "audio")
+            .map((sender) => {
+              peerConnection.removeTrack(sender)
+            });
 
           audioStream.getAudioTracks().forEach((track) => {
             stream.addTrack(track);
-            if (peerConnection && peerConnection.signalingState !== "closed") {
-              peerConnection
-                .getSenders()
-                .filter((sender) => sender.track?.kind === "audio")
-                .forEach((sender) => sender.replaceTrack(track));
-            }
+            peerConnection?.addTrack(track);
           });
         }
       } else {
         stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+        peerConnection
+          ?.getSenders()
+          .filter((sender) => sender.track?.kind === "audio")
+          .map((sender) => {
+            peerConnection.removeTrack(sender);
+          });
 
         const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
         stream.addTrack(silentAudioTrack);
-        if (peerConnection && peerConnection.signalingState !== "closed") {
-          peerConnection
-            .getSenders()
-            .filter((sender) => sender.track?.kind === "audio")
-            .forEach((sender) => sender.replaceTrack(silentAudioTrack));
-        }
+        peerConnection?.addTrack(silentAudioTrack);
       }
 
       setLocalStream(stream);
@@ -213,15 +212,13 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           "video"
         );
         if (videoStream instanceof MediaStream) {
-          stream.getVideoTracks().forEach((track) => {
-            stream.removeTrack(track);
-          });
+          stream.getVideoTracks().forEach((track) => stream.removeTrack(track));
 
           videoStream.getVideoTracks().forEach((track) => {
             stream.addTrack(track);
             if (peerConnection?.signalingState !== "closed") {
               peerConnection?.getSenders().forEach((sender) => {
-                if (sender.track?.kind !== "audio") {
+                if (sender.track?.kind === "video") {
                   sender.replaceTrack(track);
                 }
               });
@@ -245,9 +242,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           stream.removeTrack(track);
         });
 
+        stream.addTrack(blackVideoTrack)
         if (peerConnection?.signalingState !== "closed") {
           peerConnection?.getSenders().forEach((sender) => {
-            if (sender.track?.kind !== "audio") {
+            if (sender.track?.kind === "video") {
               sender.replaceTrack(blackVideoTrack);
             }
           });
@@ -781,13 +779,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [callStatus]);
 
   useEffect(() => {
-    const videoElement = localVideoRef.current;
-    console.log(videoElement);
-    
-    if (videoElement) {
-      videoElement.muted = true;
-      console.log(videoElement.muted);
-    }
+    if(localVideoRef.current) {
+      localVideoRef.current.defaultMuted = true;
+      localVideoRef.current.muted = true;
+    };
   }, [localVideoRef]);
 
   useEffect(() => {
