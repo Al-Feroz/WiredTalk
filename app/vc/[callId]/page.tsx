@@ -623,7 +623,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     const ffmpeg = new FFmpeg();
 
     const loadFFmpeg = async () => {
-      if (!localStream || !RemoteStream) return;
+      if (!PeerStream || !RemoteStream) return;
       const canvas = RecorderCanvas || document.createElement("canvas");
       !RecorderCanvas && setRecorderCanvas(canvas);
       const ctx = canvas.getContext("2d");
@@ -631,13 +631,13 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
       const audioContext = new AudioContext();
 
-      const localAudioTracks = localStream.getAudioTracks();
+      const localAudioTracks = PeerStream.getAudioTracks();
       const remoteAudioTracks = RemoteStream.getAudioTracks();
 
       let localAudioSource, remoteAudioSource;
 
       if (localAudioTracks.length > 0) {
-        localAudioSource = audioContext.createMediaStreamSource(localStream);
+        localAudioSource = audioContext.createMediaStreamSource(PeerStream);
       }
 
       if (remoteAudioTracks.length > 0) {
