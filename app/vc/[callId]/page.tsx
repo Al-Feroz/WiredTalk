@@ -148,52 +148,56 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }
 
   const changeAudio = async () => {
-    const newState = !MicEnabled;
-    const stream = localStream;
-    if (!stream) return;
+    try {
+      const newState = !MicEnabled;
+      const stream = localStream;
+      if (!stream) return;
 
-    if (newState) {
-      const constraints = await getConstraints();
-      const audioStream = await getMediaStream(constraints.audio, "audio");
+      if (newState) {
+        const constraints = await getConstraints();
+        const audioStream = await getMediaStream(constraints.audio, "audio");
 
-      if (audioStream instanceof MediaStream) {
-        const existingTracks = stream.getAudioTracks();
-        existingTracks.forEach((track) => {
-          stream.removeTrack(track);
-        });
+        if (audioStream instanceof MediaStream) {
+          const existingTracks = stream.getAudioTracks();
+          existingTracks.forEach((track) => {
+            stream.removeTrack(track);
+          });
 
-        audioStream.getAudioTracks().forEach((track) => {
-          stream.addTrack(track);
-          if (peerConnection && peerConnection.signalingState !== "closed") {
-            peerConnection
-              .getSenders()
-              .filter((sender) => sender.track?.kind === "audio")
-              .forEach((sender) => sender.replaceTrack(track));
-          }
-        });
+          audioStream.getAudioTracks().forEach((track) => {
+            stream.addTrack(track);
+            if (peerConnection && peerConnection.signalingState !== "closed") {
+              peerConnection
+                .getSenders()
+                .filter((sender) => sender.track?.kind === "audio")
+                .forEach((sender) => sender.replaceTrack(track));
+            }
+          });
+        }
+      } else {
+        stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+
+        const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
+        stream.addTrack(silentAudioTrack);
+        if (peerConnection && peerConnection.signalingState !== "closed") {
+          peerConnection
+            .getSenders()
+            .filter((sender) => sender.track?.kind === "audio")
+            .forEach((sender) => sender.replaceTrack(silentAudioTrack));
+        }
       }
-    } else {
-      stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
 
-      const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
-      stream.addTrack(silentAudioTrack);
-      if (peerConnection && peerConnection.signalingState !== "closed") {
-        peerConnection
-          .getSenders()
-          .filter((sender) => sender.track?.kind === "audio")
-          .forEach((sender) => sender.replaceTrack(silentAudioTrack));
-      }
+      setLocalStream(stream);
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      socket.emit("change-event", {
+        state: newState,
+        type: "audio",
+        call_id: callId,
+        userId: UserData._id,
+      });
+      setMicEnabled(newState);
+    } catch (err) {
+      console.log(err);
     }
-
-    setLocalStream(stream);
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-    socket.emit("change-event", {
-      state: newState,
-      type: "audio",
-      call_id: callId,
-      userId: UserData._id,
-    });
-    setMicEnabled(newState);
   };
 
   const changeVideo = async () => {
@@ -777,8 +781,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [callStatus]);
 
   useEffect(() => {
-    if(localVideoRef.current) localVideoRef.current.muted = true;
-  }, []);
+    if (localVideoRef.current) localVideoRef.current.muted = true;
+  }, [localVideoRef.current]);
 
   useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
