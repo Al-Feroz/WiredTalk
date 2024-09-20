@@ -252,6 +252,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       setLocalStream(stream);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
+        console.log(localVideoRef.current.srcObject.getTracks());
       }
       socket.emit("change-event", {
         state: newState,
@@ -324,6 +325,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setLocalStream(prevStream);
     if (localVideoRef.current && prevStream) {
       localVideoRef.current.srcObject = new MediaStream(prevStream.getVideoTracks());
+      console.log(localVideoRef.current.srcObject.getTracks());
     }
   };
 
@@ -355,6 +357,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           setLocalStream(prevStream);
           if (localVideoRef.current && prevStream) {
             localVideoRef.current.srcObject = new MediaStream(prevStream.getVideoTracks());
+            console.log(localVideoRef.current.srcObject.getTracks());
           }
           if (!VideoEnabled) {
             socket.emit("change-event", {
@@ -1052,6 +1055,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           setLocalStream(stream);
           if (localVideoRef.current) {
             localVideoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
+            console.log(localVideoRef.current.srcObject.getTracks());
           }
         }
 
