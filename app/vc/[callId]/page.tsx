@@ -1219,6 +1219,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               disablePictureInPicture
               playsInline
               autoPlay
+              muted
               className="rounded-md shadow-white drop-shadow-xl bg-black"
               style={{
                 width: "100%",
