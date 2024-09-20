@@ -63,6 +63,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [IsCallRecording, setIsCallRecording] = useState<boolean>(false);
+  const [PeerStream, setPeerStream] = useState<MediaStream | null>(null);
   const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [RecordedBy, setRecordedBy] = useState<string | null>(null);
@@ -149,21 +150,25 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   const changeAudio = async () => {
     const newState = !MicEnabled;
-    const stream = localStream;
-    if (!stream) return;
+    const LocalStream = localStream;
+    const peerStream = PeerStream;
+    if (!LocalStream || !peerStream) return;
 
     if (newState) {
       const constraints = await getConstraints();
       const audioStream = await getMediaStream(constraints.audio, "audio");
 
       if (audioStream instanceof MediaStream) {
-        const existingTracks = stream.getAudioTracks();
-        existingTracks.forEach((track) => {
-          stream.removeTrack(track);
+        LocalStream.getAudioTracks().forEach((track) => {
+          LocalStream.removeTrack(track);
+        });
+        peerStream.getAudioTracks().forEach((track) => {
+          peerStream.removeTrack(track);
         });
 
         audioStream.getAudioTracks().forEach((track) => {
-          stream.addTrack(track);
+          LocalStream.addTrack(track);
+          peerStream.addTrack(track);
           if (peerConnection && peerConnection.signalingState !== "closed") {
             peerConnection
               .getSenders()
@@ -173,10 +178,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         });
       }
     } else {
-      stream.getAudioTracks().forEach((track) => stream.removeTrack(track));
+      LocalStream.getAudioTracks().forEach((track) => LocalStream.removeTrack(track));
+      peerStream.getAudioTracks().forEach((track) => peerStream.removeTrack(track));
 
       const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
-      stream.addTrack(silentAudioTrack);
+      LocalStream.addTrack(silentAudioTrack);
+      peerStream.addTrack(silentAudioTrack);
       if (peerConnection && peerConnection.signalingState !== "closed") {
         peerConnection
           .getSenders()
@@ -185,7 +192,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     }
 
-    setLocalStream(stream);
+    setLocalStream(LocalStream);
+    setPeerStream(peerStream);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = LocalStream;
+    };
     socket.emit("change-event", {
       state: newState,
       type: "audio",
@@ -198,8 +209,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const changeVideo = async () => {
     try {
       const newState = !VideoEnabled;
-      const stream = localStream;
-      if (!stream) return;
+      const LocalStream = localStream;
+      const peerStream = PeerStream;
+      if (!LocalStream || !peerStream) return;
 
       if (newState) {
         const constraints = await getConstraints();
@@ -208,10 +220,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           "video"
         );
         if (videoStream instanceof MediaStream) {
-          stream.getVideoTracks().forEach((track) => stream.removeTrack(track));
+          LocalStream.getVideoTracks().forEach((track) => LocalStream.removeTrack(track));
+          peerStream.getVideoTracks().forEach((track) => peerStream.removeTrack(track));
 
           videoStream.getVideoTracks().forEach((track) => {
-            stream.addTrack(track);
+            LocalStream.addTrack(track);
+            peerStream.addTrack(track);
             if (peerConnection?.signalingState !== "closed") {
               peerConnection?.getSenders().forEach((sender) => {
                 if (sender.track?.kind === "video") {
@@ -234,11 +248,15 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         const blackStream = canvas.captureStream();
         const blackVideoTrack = blackStream.getVideoTracks()[0];
 
-        stream.getVideoTracks().forEach((track) => {
-          stream.removeTrack(track);
+        LocalStream.getVideoTracks().forEach((track) => {
+          LocalStream.removeTrack(track);
+        });
+        peerStream.getVideoTracks().forEach((track) => {
+          peerStream.removeTrack(track);
         });
 
-        stream.addTrack(blackVideoTrack)
+        LocalStream.addTrack(blackVideoTrack)
+        peerStream.addTrack(blackVideoTrack)
         if (peerConnection?.signalingState !== "closed") {
           peerConnection?.getSenders().forEach((sender) => {
 
@@ -249,10 +267,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         }
       }
 
-      setLocalStream(stream);
+      setLocalStream(LocalStream);
+      setPeerStream(peerStream);
       if (localVideoRef.current) {
-        localVideoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
-        console.log(localVideoRef.current.srcObject.getTracks());
+        localVideoRef.current.srcObject = LocalStream;
       }
       socket.emit("change-event", {
         state: newState,
@@ -277,7 +295,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   };
 
   const restartStream = async () => {
-    const prevStream = localStream;
+    const prevLocalStream = localStream;
+    const prevPeerStream = PeerStream;
     if (VideoEnabled) {
       const constraints = await getConstraints();
       const videoStream: MediaStream | Error = await getMediaStream(
@@ -285,12 +304,17 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         "video"
       );
       if (videoStream instanceof MediaStream) {
-        prevStream?.getVideoTracks().map((track) => {
+        prevLocalStream?.getVideoTracks().map((track) => {
           track.stop();
-          prevStream?.removeTrack(track);
+          prevLocalStream?.removeTrack(track);
+        });
+        prevPeerStream?.getVideoTracks().map((track) => {
+          track.stop();
+          prevPeerStream?.removeTrack(track);
         });
         videoStream.getVideoTracks().forEach((track) => {
-          prevStream?.addTrack(track);
+          prevLocalStream?.addTrack(track);
+          prevPeerStream?.addTrack(track);
           if (peerConnection?.signalingState !== "closed") {
             peerConnection?.getSenders().forEach((sender) => {
               if (sender.track?.kind !== "audio") {
@@ -313,7 +337,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const blackStream = canvas.captureStream();
       const blackVideoTrack = blackStream.getVideoTracks()[0];
 
-      prevStream?.addTrack(blackVideoTrack);
+      prevLocalStream?.addTrack(blackVideoTrack);
+      prevPeerStream?.addTrack(blackVideoTrack);
       if (peerConnection?.signalingState !== "closed") {
         peerConnection?.getSenders().forEach((sender) => {
           if (sender.track?.kind !== "audio") {
@@ -322,10 +347,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         });
       }
     }
-    setLocalStream(prevStream);
-    if (localVideoRef.current && prevStream) {
-      localVideoRef.current.srcObject = new MediaStream(prevStream.getVideoTracks());
-      console.log(localVideoRef.current.srcObject.getTracks());
+    setLocalStream(prevLocalStream);
+    setPeerStream(prevPeerStream);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = prevLocalStream;
     }
   };
 
@@ -334,13 +359,18 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       await navigator.mediaDevices
         .getDisplayMedia({ video: true, audio: false })
         .then((stream) => {
-          const prevStream = localStream;
-          prevStream
+          const prevLocalStream = localStream;
+          prevLocalStream
             ?.getVideoTracks()
-            .map((track) => prevStream.removeTrack(track));
+            .map((track) => prevLocalStream.removeTrack(track));
+          const prevPeerStream = PeerStream;
+          prevPeerStream
+            ?.getVideoTracks()
+            .map((track) => prevPeerStream.removeTrack(track));
 
           stream.getVideoTracks().map((track) => {
-            prevStream?.addTrack(track);
+            prevLocalStream?.addTrack(track);
+            prevPeerStream?.addTrack(track);
             if (peerConnection?.signalingState !== "closed") {
               peerConnection?.getSenders().forEach((sender) => {
                 if (sender.track?.kind !== "audio") {
@@ -354,10 +384,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             });
           });
 
-          setLocalStream(prevStream);
-          if (localVideoRef.current && prevStream) {
-            localVideoRef.current.srcObject = new MediaStream(prevStream.getVideoTracks());
-            console.log(localVideoRef.current.srcObject.getTracks());
+          setLocalStream(prevLocalStream);
+          setPeerStream(prevPeerStream);
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = prevLocalStream;
           }
           if (!VideoEnabled) {
             socket.emit("change-event", {
@@ -1009,7 +1039,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         );
         const data = res.data;
 
-        const stream = new MediaStream();
+        const LocalStream = new MediaStream();
+        const peerStream = new MediaStream();
 
         const constraints = await getConstraints();
         const audioStream: MediaStream | Error = await getMediaStream(
@@ -1022,11 +1053,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         );
 
         if (audioStream instanceof MediaStream) {
-          audioStream.getTracks().map((track) => stream.addTrack(track));
+          audioStream.getTracks().map((track) => peerStream.addTrack(track));
         }
-
+        
         if (videoStream instanceof MediaStream) {
-          videoStream.getTracks().map((track) => stream.addTrack(track));
+          videoStream.getTracks().map((track) => peerStream.addTrack(track));
+          videoStream.getTracks().map((track) => LocalStream.addTrack(track));
         } else {
           const canvas = document.createElement("canvas");
           canvas.width = 1920;
@@ -1040,7 +1072,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           const blackStream = canvas.captureStream();
           const blackVideoTrack = blackStream.getVideoTracks()[0];
 
-          stream.addTrack(blackVideoTrack);
+          peerStream.addTrack(blackVideoTrack);
+          LocalStream.addTrack(blackVideoTrack);
 
           socket.emit("change-event", {
             state: !VideoEnabled,
@@ -1052,10 +1085,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         }
 
         if (isCallStarted) {
-          setLocalStream(stream);
+          setLocalStream(LocalStream);
+          setPeerStream(peerStream);
           if (localVideoRef.current) {
-            localVideoRef.current.srcObject = new MediaStream(stream.getVideoTracks());
-            console.log(localVideoRef.current.srcObject.getTracks());
+            localVideoRef.current.srcObject = LocalStream;
           }
         }
 
@@ -1128,9 +1161,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             getMessages(creatorUserRes.data._id);
           }
 
-          stream.getTracks().forEach((track) => {
+          peerStream.getTracks().forEach((track) => {
             if (peerConnection.signalingState !== "closed") {
-              peerConnection.addTrack(track, stream);
+              peerConnection.addTrack(track, peerStream);
             }
           });
         }
