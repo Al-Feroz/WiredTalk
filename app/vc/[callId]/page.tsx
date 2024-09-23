@@ -1,4 +1,8 @@
 "use client";
+import SendEditMessage from "@/components/OneToOneMessages/SendEditMessage";
+import DeleteMessage from "@/components/OneToOneMessages/DeleteMessage";
+import SendMessage from "@/components/OneToOneMessages/SendMessage";
+import GetMessages from "@/components/OneToOneMessages/GetMessages";
 import MessageBox from "@/components/MessageBox/MessageBox";
 import sendNotification from "@/utils/sendNotification";
 import { useEffect, useRef, useState } from "react";
@@ -73,6 +77,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [RemoteAudio, setRemoteAudio] = useState<boolean>(false);
   const [IsRecording, setIsRecording] = useState<boolean>(false);
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [callStatus, setCallStatus] = useState<string>("");
   const [EditValue, setEditValue] = useState<string>("");
   const [CurrentChat, setCurrentChat] = useState<any>();
@@ -178,8 +183,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         });
       }
     } else {
-      LocalStream.getAudioTracks().forEach((track) => LocalStream.removeTrack(track));
-      peerStream.getAudioTracks().forEach((track) => peerStream.removeTrack(track));
+      LocalStream.getAudioTracks().forEach((track) =>
+        LocalStream.removeTrack(track)
+      );
+      peerStream
+        .getAudioTracks()
+        .forEach((track) => peerStream.removeTrack(track));
 
       const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
       LocalStream.addTrack(silentAudioTrack);
@@ -196,7 +205,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setPeerStream(peerStream);
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = LocalStream;
-    };
+    }
     socket.emit("change-event", {
       state: newState,
       type: "audio",
@@ -220,8 +229,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           "video"
         );
         if (videoStream instanceof MediaStream) {
-          LocalStream.getVideoTracks().forEach((track) => LocalStream.removeTrack(track));
-          peerStream.getVideoTracks().forEach((track) => peerStream.removeTrack(track));
+          LocalStream.getVideoTracks().forEach((track) =>
+            LocalStream.removeTrack(track)
+          );
+          peerStream
+            .getVideoTracks()
+            .forEach((track) => peerStream.removeTrack(track));
 
           videoStream.getVideoTracks().forEach((track) => {
             LocalStream.addTrack(track);
@@ -255,11 +268,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           peerStream.removeTrack(track);
         });
 
-        LocalStream.addTrack(blackVideoTrack)
-        peerStream.addTrack(blackVideoTrack)
+        LocalStream.addTrack(blackVideoTrack);
+        peerStream.addTrack(blackVideoTrack);
         if (peerConnection?.signalingState !== "closed") {
           peerConnection?.getSenders().forEach((sender) => {
-
             if (sender.track?.kind === "video") {
               sender.replaceTrack(blackVideoTrack);
             }
@@ -430,132 +442,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     }
   };
 
-  const getMessages = async (ReceiverId: string) => {
-    try {
-      const response: AxiosResponse = await axios.get(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/messages/one-to-one/${UserData._id}`
-      );
-
-      const messages = response.data;
-      const statusUpdatePromises = messages
-        .filter((message: any) => message?.seen === false)
-        .map((message: any) => {
-          if (message?.receiverId === UserData._id) {
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${message?._id}`
-              )
-              .then(() => {
-                message.seen = true;
-                ws.emit("message-read", { messageId: message._id });
-              });
-          }
-        });
-      await Promise.all(statusUpdatePromises);
-
-      const filteredMessages = messages.filter(
-        (message: any) =>
-          message.senderId == ReceiverId || message.receiverId == ReceiverId
-      );
-      setMessagesList(filteredMessages);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
-  };
-
-  const sendMessage = async () => {
-    const currentDate = new Date();
-    const data = {
-      senderId: UserData._id,
-      receiverId: CurrentChat?._id,
-      message: Message,
-      timming: currentDate.toLocaleTimeString([], {
-        hour12: true,
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      seen: false,
-    };
-    const notify: notification = {
-      _id: CurrentChat._id,
-      title: `New Message From ${UserData.name}`,
-      type: "one-to-one-message",
-      body: Message,
-      icon: UserData.image,
-      badge: UserData.image,
-    };
-
-    await axios
-      .post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/send`,
-        data
-      )
-      .then((res: AxiosResponse) => {
-        ws.emit("one-to-one-message", { _id: res.data, ...data });
-      });
-
-    sendNotification(notify);
-    setMessage("");
-  };
-
-  const CencelEditedMessage = () => {
-    setEditId("");
-    setEditValue("");
-  };
-
-  const SendEditedMessage = async () => {
-    if (EditId.trim() !== "" && EditValue.trim() !== "") {
-      const result = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/edit`,
-        { messageId: EditId, updatedMessage: EditValue }
-      );
-
-      if (result.status === 200) {
-        const index = MessagesList.findIndex(
-          (message) => message._id === EditId
-        );
-
-        if (index === -1) return;
-
-        setMessagesList((prevMessages) => [
-          ...prevMessages.slice(0, index),
-          { ...prevMessages[index], message: EditValue },
-          ...prevMessages.slice(index + 1),
-        ]);
-
-        ws.emit("one-to-one-edited", {
-          messageId: EditId,
-          updatedMessage: EditValue,
-        });
-
-        setEditId("");
-        setEditValue("");
-      }
-    }
-  };
-
   const editMessage = (messageId: string) => {
     setEditId(messageId);
-  };
-
-  const deleteMessage = async (messageId: string) => {
-    try {
-      const result = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/delete/`,
-        { messageId }
-      );
-
-      if (result.status === 200) {
-        setMessagesList((prevMessagesList) =>
-          prevMessagesList.filter((message) => message._id !== messageId)
-        );
-        ws.emit("one-to-one-delete", { messageId: messageId });
-      } else {
-        console.error("Failed to delete message:", result.statusText);
-      }
-    } catch (error) {
-      console.error("Error deleting message:", error);
-    }
   };
 
   const OneToOneMessage = (data: {
@@ -613,14 +501,16 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     recording: boolean;
     userId: string;
   }) => {
-    if (data.call_id === callId && data.userId === CurrentChat._id) {
+    if (data.call_id === callId && data.userId === CurrentChat?._id) {
       setIsCallRecording(data.recording);
-      !data.recording ? setRecordedBy(null) : setRecordedBy(CurrentChat._id);
+      !data.recording ? setRecordedBy(null) : setRecordedBy(CurrentChat?._id);
     }
   };
 
   useEffect(() => {
+    let recorder: MediaRecorder | null;
     const ffmpeg = new FFmpeg();
+    let chunks: Blob[] = [];
 
     const loadFFmpeg = async () => {
       if (!PeerStream || !RemoteStream) return;
@@ -629,19 +519,22 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
+      const remoteStream = RemoteStream;
+      const peerStream = PeerStream;
+
       const audioContext = new AudioContext();
 
-      const localAudioTracks = PeerStream.getAudioTracks();
-      const remoteAudioTracks = RemoteStream.getAudioTracks();
+      const localAudioTracks = peerStream.getAudioTracks();
+      const remoteAudioTracks = remoteStream.getAudioTracks();
 
       let localAudioSource, remoteAudioSource;
 
       if (localAudioTracks.length > 0) {
-        localAudioSource = audioContext.createMediaStreamSource(PeerStream);
+        localAudioSource = audioContext.createMediaStreamSource(peerStream);
       }
 
       if (remoteAudioTracks.length > 0) {
-        remoteAudioSource = audioContext.createMediaStreamSource(RemoteStream);
+        remoteAudioSource = audioContext.createMediaStreamSource(remoteStream);
       }
 
       const destination = audioContext.createMediaStreamDestination();
@@ -660,7 +553,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         ...combinedAudioStream.getTracks(),
       ]);
 
-      const recorder = mediaRecorder || new MediaRecorder(mainStream);
+      recorder = mediaRecorder || new MediaRecorder(mainStream);
       !mediaRecorder && setMediaRecorder(recorder);
 
       const localVideo = document.createElement("video");
@@ -708,8 +601,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (!IsRecording) {
           await ffmpeg.load();
 
-          let chunks: Blob[] = [];
-
           recorder.ondataavailable = (ev) => {
             if (ev.data.size > 0) {
               chunks.push(ev.data);
@@ -719,7 +610,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           recorder.onstop = async () => {
             try {
               const blob = new Blob(chunks, { type: "video/webm" });
-              chunks = [];
+              chunks = []
 
               const arrayBuffer = await blob.arrayBuffer();
               await ffmpeg.writeFile("output.mp4", new Uint8Array(arrayBuffer));
@@ -775,6 +666,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           recorder.state === "recording"
         ) {
           recorder.stop();
+          setIsRecording(false);
           setRecordedBy(null);
           ws.emit("recording", {
             call_id: callId,
@@ -807,6 +699,21 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   useEffect(() => {
     callStatusRef.current = callStatus;
   }, [callStatus]);
+
+  useEffect(() => {
+    const messageToEdit = MessagesList.find((msg) => msg._id === EditId);
+    if (messageToEdit) {
+      setEditValue(messageToEdit.message);
+    } else {
+      setEditValue("");
+    }
+  }, [EditId, MessagesList]);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [MessagesList]);
 
   useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
@@ -1055,7 +962,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (audioStream instanceof MediaStream) {
           audioStream.getTracks().map((track) => peerStream.addTrack(track));
         }
-        
+
         if (videoStream instanceof MediaStream) {
           videoStream.getTracks().map((track) => peerStream.addTrack(track));
           videoStream.getTracks().map((track) => LocalStream.addTrack(track));
@@ -1117,7 +1024,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               { userId: data.receivers }
             );
             setCurrentChat(remoteUserRes.data);
-            getMessages(remoteUserRes.data._id);
+            GetMessages({
+              userId: UserData._id,
+              receiverId: remoteUserRes.data._id,
+              setMessagesList: setMessagesList,
+            });
             CallAudio && CallAudio.play();
 
             const timeoutId = setTimeout(() => {
@@ -1131,6 +1042,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 window.location.replace(prevRoute ? prevRoute : "/");
               }
             }, 15000);
+
+            peerStream.getTracks().forEach((track) => {
+              if (peerConnection.signalingState !== "closed") {
+                peerConnection.addTrack(track, peerStream);
+              }
+            });
 
             return () => clearTimeout(timeoutId);
           } else if (
@@ -1158,14 +1075,18 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               { userId: data.creatorId }
             );
             setCurrentChat(creatorUserRes.data);
-            getMessages(creatorUserRes.data._id);
-          }
+            GetMessages({
+              userId: UserData._id,
+              receiverId: CurrentChat?._id,
+              setMessagesList: setMessagesList,
+            });
 
-          peerStream.getTracks().forEach((track) => {
-            if (peerConnection.signalingState !== "closed") {
-              peerConnection.addTrack(track, peerStream);
-            }
-          });
+            peerStream.getTracks().forEach((track) => {
+              if (peerConnection.signalingState !== "closed") {
+                peerConnection.addTrack(track, peerStream);
+              }
+            });
+          }
         }
       } catch (error) {
         console.error("Error getting media stream or handling call:", error);
@@ -1173,7 +1094,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     };
 
     fetchDataAndSetupCall();
-  }, [callId, peerConnection, UserData._id, isCallStarted]);
+  }, [callId, peerConnection, UserData._id, CurrentChat?._id, isCallStarted]);
 
   return (
     <div className="w-full h-full relative">
@@ -1209,10 +1130,16 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                   isSender={isSender}
                   messageId={message._id}
                   onEdit={editMessage}
-                  onDelete={deleteMessage}
+                  onDelete={() => {
+                    DeleteMessage({
+                      messageId: message._id,
+                      setMessagesList: setMessagesList,
+                    });
+                  }}
                 />
               );
             })}
+          <div ref={messagesEndRef}></div>
         </div>
         <div className="w-full flex justify-around items-center py-2 px-4 bg-gray-200">
           <input
@@ -1222,7 +1149,17 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             value={Message === "" ? "" : Message}
             onChange={(ev) => setMessage(ev.target.value)}
           />
-          <button className="cursor-pointer" onClick={sendMessage}>
+          <button
+            className="cursor-pointer"
+            onClick={() => {
+              SendMessage({
+                UserData: UserData,
+                receiverData: CurrentChat,
+                Message: Message,
+              });
+              setMessage("");
+            }}
+          >
             <Send />
           </button>
         </div>
@@ -1340,35 +1277,15 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </div>
         </div>
       </div>
-      {EditId !== "" && (
-        <div className="fixed top-0 right-0 bottom-0 left-0 bg-black bg-opacity-55 flex justify-center items-center z-50">
-          <div className="bg-white px-5 py-4 rounded-lg">
-            <input
-              type="text"
-              defaultValue={
-                MessagesList.filter((message) => message._id === EditId)[0]
-                  .message
-              }
-              onChange={(e) => setEditValue(e.target.value)}
-              className="my-3 outline-none border-b-2 border-blue-600 rounded"
-            />
-            <div className="flex items-center justify-around">
-              <button
-                className="bg-blue-600 text-white px-3 py-2 rounded-md"
-                onClick={CencelEditedMessage}
-              >
-                Cencel
-              </button>
-              <button
-                className="bg-blue-600 text-white px-3 py-2 rounded-md"
-                onClick={SendEditedMessage}
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {EditId !== "" &&
+        SendEditMessage({
+          EditId: EditId,
+          EditValue: EditValue,
+          MessagesList: MessagesList,
+          setEditId: setEditId,
+          setEditValue: setEditValue,
+          setMessagesList: setMessagesList,
+        })}
     </div>
   );
 };

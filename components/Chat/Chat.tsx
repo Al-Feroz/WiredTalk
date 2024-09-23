@@ -1,7 +1,10 @@
+import SendEditMessage from "@/components/OneToOneMessages/SendEditMessage";
+import DeleteMessage from "@/components/OneToOneMessages/DeleteMessage";
+import SendMessage from "@/components/OneToOneMessages/SendMessage";
+import GetMessages from "@/components/OneToOneMessages/GetMessages";
 import { changeRoute } from "@/lib/slices/routeSlice/routeSlice";
 import MessageBox from "@/components/MessageBox/MessageBox";
-import sendNotification from "@/utils/sendNotification";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import axios, { AxiosResponse } from "axios";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
@@ -19,6 +22,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   userData,
 }) => {
   const [FriendsList, setFriendsList] = useState<Array<any>>();
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [EditValue, setEditValue] = useState<string>("");
   const [CurrentChat, setCurrentChat] = useState<any>();
   const [Message, setMessage] = useState<string>("");
@@ -49,35 +53,6 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       });
   };
 
-  const getMessages = async () => {
-    try {
-      const response: AxiosResponse = await axios.get(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/messages/one-to-one/${userData._id}`
-      );
-
-      const messages = response.data;
-      const statusUpdatePromises = messages
-        .filter((message: any) => message?.seen === false)
-        .map((message: any) => {
-          if (message?.receiverId === userData._id) {
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${message?._id}`
-              )
-              .then(() => {
-                message.seen = true;
-                ws.emit("message-read", { messageId: message._id });
-              });
-          }
-        });
-      await Promise.all(statusUpdatePromises);
-
-      setMessagesList(messages);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-    }
-  };
-
   const makeCall = () => {
     const uuid = uuidv4().split("-").join("").slice(0, 15);
     axios
@@ -93,99 +68,8 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       });
   };
 
-  const sendMessage = async () => {
-    const currentDate = new Date();
-    const data = {
-      senderId: userData._id,
-      receiverId: CurrentChat?._id,
-      message: Message,
-      timming: currentDate.toLocaleTimeString([], {
-        hour12: true,
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      seen: false,
-    };
-    const notify: notification = {
-      _id: CurrentChat._id,
-      title: `New Message From ${userData.name}`,
-      type: "one-to-one-message",
-      body: Message,
-      icon: userData.image,
-      badge: userData.image,
-    };
-
-    await axios
-      .post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/send`,
-        data
-      )
-      .then((res: AxiosResponse) => {
-        ws.emit("one-to-one-message", { _id: res.data, ...data });
-      });
-
-    sendNotification(notify);
-    setMessage("");
-  };
-
-  const CencelEditedMessage = () => {
-    setEditId("");
-    setEditValue("");
-  };
-
-  const SendEditedMessage = async () => {
-    if (EditId.trim() !== "" && EditValue.trim() !== "") {
-      const result = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/edit`,
-        { messageId: EditId, updatedMessage: EditValue }
-      );
-
-      if (result.status === 200) {
-        const index = MessagesList.findIndex(
-          (message) => message._id === EditId
-        );
-
-        if (index === -1) return;
-
-        setMessagesList((prevMessages) => [
-          ...prevMessages.slice(0, index),
-          { ...prevMessages[index], message: EditValue },
-          ...prevMessages.slice(index + 1),
-        ]);
-
-        ws.emit("one-to-one-edited", {
-          messageId: EditId,
-          updatedMessage: EditValue,
-        });
-
-        setEditId("");
-        setEditValue("");
-      }
-    }
-  };
-
   const editMessage = (messageId: string) => {
     setEditId(messageId);
-  };
-
-  const deleteMessage = async (messageId: string) => {
-    try {
-      const result = await axios.post(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/delete/`,
-        { messageId }
-      );
-
-      if (result.status === 200) {
-        setMessagesList((prevMessagesList) =>
-          prevMessagesList.filter((message) => message._id !== messageId)
-        );
-        ws.emit("one-to-one-delete", { messageId: messageId });
-      } else {
-        console.error("Failed to delete message:", result.statusText);
-      }
-    } catch (error) {
-      console.error("Error deleting message:", error);
-    }
   };
 
   const OneToOneMessage = (data: {
@@ -239,6 +123,21 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   };
 
   useEffect(() => {
+    const messageToEdit = MessagesList.find((msg) => msg._id === EditId);
+    if (messageToEdit) {
+      setEditValue(messageToEdit.message);
+    } else {
+      setEditValue("");
+    }
+  }, [EditId, MessagesList]);
+
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [MessagesList]);
+
+  useEffect(() => {
     ws.on("message-read", messageStatusHandle);
     ws.on("one-to-one-edited", OneToOneEdited);
     ws.on("one-to-one-delete", OneToOneDelete);
@@ -253,9 +152,18 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   }, [ws, userData._id, CurrentChat?._id, MessagesList, setMessagesList]);
 
   useEffect(() => {
-    if (userData && userData._id.trim() !== "") {
+    if (userData && userData._id.trim() !== "" && CurrentChat?._id) {
+      GetMessages({
+        userId: userData._id,
+        receiverId: CurrentChat._id,
+        setMessagesList: setMessagesList,
+      });
+    }
+  }, [userData, CurrentChat?._id]);
+
+  useEffect(() => {
+    if (userData && userData._id.trim()) {
       getFriends();
-      getMessages();
     }
   }, [userData]);
 
@@ -384,11 +292,17 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                         timming={message.timming}
                         messageId={message._id}
                         onEdit={editMessage}
-                        onDelete={deleteMessage}
-                      ></MessageBox>
+                        onDelete={() => {
+                          DeleteMessage({
+                            messageId: message._id,
+                            setMessagesList: setMessagesList,
+                          });
+                        }}
+                      />
                     );
                   }
                 })}
+              <div ref={messagesEndRef} ></div>
             </div>
             <div className="bg-white w-full flex absolute bottom-0 px-4 py-3">
               <input
@@ -398,42 +312,32 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                 value={Message === "" ? "" : Message}
                 onChange={(ev) => setMessage(ev.target.value)}
               />
-              <button className="cursor-pointer" onClick={sendMessage}>
+              <button
+                className="cursor-pointer"
+                onClick={() => {
+                  SendMessage({
+                    UserData: userData,
+                    receiverData: CurrentChat,
+                    Message: Message,
+                  });
+                  setMessage("");
+                }}
+              >
                 <Send />
               </button>
             </div>
           </>
         )}
       </div>
-      {EditId !== "" && (
-        <div className="fixed top-0 right-0 bottom-0 left-0 bg-black bg-opacity-55 flex justify-center items-center">
-          <div className="bg-white px-5 py-4 rounded-lg">
-            <input
-              type="text"
-              defaultValue={
-                MessagesList.filter((message) => message._id === EditId)[0]
-                  .message
-              }
-              onChange={(e) => setEditValue(e.target.value)}
-              className="my-3 outline-none border-b-2 border-blue-600 rounded"
-            />
-            <div className="flex items-center justify-around">
-              <button
-                className="bg-blue-600 text-white px-3 py-2 rounded-md"
-                onClick={CencelEditedMessage}
-              >
-                Cencel
-              </button>
-              <button
-                className="bg-blue-600 text-white px-3 py-2 rounded-md"
-                onClick={SendEditedMessage}
-              >
-                Send
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {EditId !== "" &&
+        SendEditMessage({
+          EditId: EditId,
+          EditValue: EditValue,
+          MessagesList: MessagesList,
+          setEditId: setEditId,
+          setEditValue: setEditValue,
+          setMessagesList: setMessagesList,
+        })}
     </div>
   );
 };
