@@ -9,9 +9,11 @@ interface SendEditMessageProps {
     _id: string;
     senderId: string;
     receiverId: string;
-    message: string;
+    message?: string;
+    filePath?: string;
     timming: string;
     seen: boolean;
+    type: string;
   }[];
   setEditId: React.Dispatch<React.SetStateAction<string>>;
   setEditValue: React.Dispatch<React.SetStateAction<string>>;
@@ -21,9 +23,11 @@ interface SendEditMessageProps {
         _id: string;
         senderId: string;
         receiverId: string;
-        message: string;
+        message?: string;
+        filePath?: string;
         timming: string;
         seen: boolean;
+        type: string;
       }[]
     >
   >;

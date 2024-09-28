@@ -32,9 +32,11 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       _id: string;
       senderId: string;
       receiverId: string;
-      message: string;
+      message?: string;
+      filePath?: string;
       timming: string;
       seen: boolean;
+      type: string;
     }>
   >([]);
   const dispatch = useDispatch();
@@ -42,6 +44,44 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
   const ws = socket;
 
   ws.connect();
+
+  const downloadRecording = async (filePath: string) => {
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/${filePath}`,
+        {
+          responseType: "blob", // Important to set the response type to blob
+        }
+      );
+
+      // Create a blob from the response data
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"],
+      });
+
+      // Create a link element
+      const link = document.createElement("a");
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filePath; // Set the file name for download
+
+      // Append to the body and trigger the download
+      document.body.appendChild(link);
+      link.click();
+
+      // Clean up
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error("Error downloading the file:", error);
+    }
+  };
+
+  const deleteRecording = async (filename: string) => {
+    await axios.post(
+      `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/delete/`,
+      { filename: filename }
+    );
+  };
 
   const getFriends = async () => {
     await axios
@@ -72,7 +112,14 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     setEditId(messageId);
   };
 
-  const OneToOneMessage = (data: {
+  const OneToOneMessage = ({
+    _id,
+    senderId,
+    receiverId,
+    message,
+    timming,
+    seen,
+  }: {
     _id: string;
     senderId: string;
     receiverId: string;
@@ -80,76 +127,92 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     timming: string;
     seen: boolean;
   }) => {
-    if (data.senderId === userData._id || data.receiverId === userData._id) {
-      if (data.receiverId === userData._id) {
+    if (senderId === userData._id || receiverId === userData._id) {
+      if (receiverId === userData._id) {
         axios.get(
-          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${data._id}`
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${_id}`
         );
       }
-      setMessagesList((prevMessages) => [...prevMessages, data]);
+      setMessagesList((prev) => [
+        ...prev,
+        { _id, senderId, receiverId, message, timming, seen, type: "message" },
+      ]);
     }
   };
 
-  const OneToOneEdited = (data: {
+  const OneToOneEdited = ({
+    messageId,
+    updatedMessage,
+  }: {
     messageId: string;
     updatedMessage: string;
   }) => {
-    const index = MessagesList.findIndex(
-      (message) => message._id === data.messageId
-    );
+    setMessagesList((prev) => {
+      const index = prev.findIndex((message) => message._id === messageId);
+      if (index === -1) return prev;
 
-    if (index === -1) return;
-
-    setMessagesList((prevMessages) => [
-      ...prevMessages.slice(0, index),
-      { ...prevMessages[index], message: data.updatedMessage },
-      ...prevMessages.slice(index + 1),
-    ]);
+      const updatedMessages = [...prev];
+      updatedMessages[index] = {
+        ...updatedMessages[index],
+        message: updatedMessage,
+      };
+      return updatedMessages;
+    });
   };
 
-  const OneToOneDelete = (data: { messageId: string }) => {
-    setMessagesList((prevMessagesList) =>
-      prevMessagesList.filter((message) => message._id !== data.messageId)
+  const OneToOneDelete = ({ messageId }: { messageId: string }) => {
+    setMessagesList((prev) =>
+      prev.filter((message) => message._id !== messageId)
     );
   };
 
-  const messageStatusHandle = (data: { messageId: string }) => {
-    const message = MessagesList.find(
-      (message) => message._id === data.messageId
-    );
-    if (message) {
-      message.seen = true;
-    }
+  const messageStatusHandle = ({ messageId }: { messageId: string }) => {
+    setMessagesList((prev) => {
+      const message = prev.find((msg) => msg._id === messageId);
+      if (message) {
+        return prev.map((msg) =>
+          msg._id === messageId ? { ...msg, seen: true } : msg
+        );
+      }
+      return prev;
+    });
   };
 
   useEffect(() => {
+    const eventHandlers = {
+      "message-read": messageStatusHandle,
+      "one-to-one-edited": OneToOneEdited,
+      "one-to-one-delete": OneToOneDelete,
+      "one-to-one-message": OneToOneMessage,
+    };
+
+    Object.entries(eventHandlers).forEach(([event, handler]) => {
+      ws.on(event, handler);
+    });
+
+    return () => {
+      Object.entries(eventHandlers).forEach(([event, handler]) => {
+        ws.off(event, handler);
+      });
+    };
+  }, [ws, userData._id, CurrentChat?._id]);
+
+  useEffect(() => {
+    const scrollToBottom = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    scrollToBottom();
+  }, [MessagesList]);
+
+  useEffect(() => {
     const messageToEdit = MessagesList.find((msg) => msg._id === EditId);
-    if (messageToEdit) {
+    if (messageToEdit && messageToEdit.message) {
       setEditValue(messageToEdit.message);
     } else {
       setEditValue("");
     }
   }, [EditId, MessagesList]);
-
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [MessagesList]);
-
-  useEffect(() => {
-    ws.on("message-read", messageStatusHandle);
-    ws.on("one-to-one-edited", OneToOneEdited);
-    ws.on("one-to-one-delete", OneToOneDelete);
-    ws.on("one-to-one-message", OneToOneMessage);
-
-    return () => {
-      ws.off("message-read", messageStatusHandle);
-      ws.off("one-to-one-edited", OneToOneEdited);
-      ws.off("one-to-one-delete", OneToOneDelete);
-      ws.off("one-to-one-message", OneToOneMessage);
-    };
-  }, [ws, userData._id, CurrentChat?._id, MessagesList, setMessagesList]);
 
   useEffect(() => {
     if (userData && userData._id.trim() !== "" && CurrentChat?._id) {
@@ -284,25 +347,65 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                   ) {
                     const isSender: boolean =
                       message.senderId === userData._id ? false : true;
-                    return (
-                      <MessageBox
-                        key={message._id}
-                        isSender={isSender}
-                        message={message.message}
-                        timming={message.timming}
-                        messageId={message._id}
-                        onEdit={editMessage}
-                        onDelete={() => {
-                          DeleteMessage({
-                            messageId: message._id,
-                            setMessagesList: setMessagesList,
-                          });
-                        }}
-                      />
-                    );
+                    if (message.type === "message" && message.message) {
+                      return (
+                        <MessageBox
+                          key={message._id}
+                          isSender={isSender}
+                          message={message.message}
+                          timming={message.timming}
+                          messageId={message._id}
+                          onEdit={editMessage}
+                          onDelete={() => {
+                            DeleteMessage({
+                              messageId: message._id,
+                              setMessagesList: setMessagesList,
+                            });
+                          }}
+                        />
+                      );
+                    } else if (message.type === "recording") {
+                      const isSender: boolean =
+                        message.senderId === userData._id ? false : true;
+                      return (
+                        <div
+                          className={`flex items-center ${
+                            isSender ? "justify-start" : "justify-end"
+                          } px-2`}
+                        >
+                          <div className="relative max-w-64 my-5 px-2 pt-4 pb-2 bg-white">
+                            <p className="bg-gray-100 rounded p-3 text-ellipsis overflow-hidden whitespace-nowrap">
+                              {message.filePath}
+                            </p>
+                            <div className="flex justify-between items-center pt-2">
+                              <button
+                                className="bg-blue-700 hover:bg-blue-900 text-white px-4 py-2 mx-1 rounded"
+                                onClick={() =>
+                                  message.filePath &&
+                                  downloadRecording(message.filePath)
+                                }
+                              >
+                                Download
+                              </button>
+                              {message.senderId === userData._id && (
+                                <button
+                                  className="bg-blue-700 hover:bg-blue-900 text-white px-4 py-2 mx-1 rounded"
+                                  onClick={() =>
+                                    message.filePath &&
+                                    deleteRecording(message.filePath)
+                                  }
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
                   }
                 })}
-              <div ref={messagesEndRef} ></div>
+              <div ref={messagesEndRef}></div>
             </div>
             <div className="bg-white w-full flex absolute bottom-0 px-4 py-3">
               <input

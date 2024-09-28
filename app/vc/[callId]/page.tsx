@@ -9,7 +9,6 @@ import { useEffect, useRef, useState } from "react";
 import axios, { AxiosResponse } from "axios";
 import useAppSelector from "@/lib/hooks";
 import { RootState } from "@/lib/store";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
 import socket from "@/utils/socket";
 import { NextPage } from "next";
 import Cookies from "js-cookie";
@@ -48,9 +47,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       _id: string;
       senderId: string;
       receiverId: string;
-      message: string;
+      message?: string;
+      filePath?: string;
       timming: string;
       seen: boolean;
+      type: string;
     }>
   >([]);
   const [peerConnection, setPeerConnection] =
@@ -60,6 +61,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   );
   const [RecorderCanvas, setRecorderCanvas] =
     useState<HTMLCanvasElement | null>(null);
+  const [audiosRecorder, setAudiosRecorder] = useState<Array<MediaRecorder>>(
+    []
+  );
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
     null
   );
@@ -73,9 +77,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [RecordedBy, setRecordedBy] = useState<string | null>(null);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
+  const [IsRecording, setIsRecording] = useState<boolean>(false);
   const [RemoteVideo, setRemoteVideo] = useState<boolean>(false);
   const [RemoteAudio, setRemoteAudio] = useState<boolean>(false);
-  const [IsRecording, setIsRecording] = useState<boolean>(false);
   const [MicEnabled, setMicEnabled] = useState<boolean>(true);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [callStatus, setCallStatus] = useState<string>("");
@@ -446,7 +450,14 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setEditId(messageId);
   };
 
-  const OneToOneMessage = (data: {
+  const OneToOneMessage = ({
+    _id,
+    senderId,
+    receiverId,
+    message,
+    timming,
+    seen,
+  }: {
     _id: string;
     senderId: string;
     receiverId: string;
@@ -454,107 +465,202 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     timming: string;
     seen: boolean;
   }) => {
-    if (data.senderId === UserData._id || data.receiverId === UserData._id) {
-      if (data.receiverId === UserData._id) {
+    if (senderId === UserData._id || receiverId === UserData._id) {
+      if (receiverId === UserData._id) {
         axios.get(
-          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${data._id}`
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${_id}`
         );
       }
-      setMessagesList((prevMessages) => [...prevMessages, data]);
+      setMessagesList((prev) => [
+        ...prev,
+        { _id, senderId, receiverId, message, timming, seen, type: "message" },
+      ]);
     }
   };
 
-  const OneToOneEdited = (data: {
+  const OneToOneEdited = ({
+    messageId,
+    updatedMessage,
+  }: {
     messageId: string;
     updatedMessage: string;
   }) => {
-    const index = MessagesList.findIndex(
-      (message) => message._id === data.messageId
-    );
+    setMessagesList((prev) => {
+      const index = prev.findIndex((message) => message._id === messageId);
+      if (index === -1) return prev;
 
-    if (index === -1) return;
-
-    setMessagesList((prevMessages) => [
-      ...prevMessages.slice(0, index),
-      { ...prevMessages[index], message: data.updatedMessage },
-      ...prevMessages.slice(index + 1),
-    ]);
+      const updatedMessages = [...prev];
+      updatedMessages[index] = {
+        ...updatedMessages[index],
+        message: updatedMessage,
+      };
+      return updatedMessages;
+    });
   };
 
-  const OneToOneDelete = (data: { messageId: string }) => {
-    setMessagesList((prevMessagesList) =>
-      prevMessagesList.filter((message) => message._id !== data.messageId)
+  const OneToOneDelete = ({ messageId }: { messageId: string }) => {
+    setMessagesList((prev) =>
+      prev.filter((message) => message._id !== messageId)
     );
   };
 
-  const messageStatusHandle = (data: { messageId: string }) => {
-    const message = MessagesList.find(
-      (message) => message._id === data.messageId
-    );
-    if (message) {
-      message.seen = true;
-    }
+  const messageStatusHandle = ({ messageId }: { messageId: string }) => {
+    setMessagesList((prev) => {
+      const message = prev.find((msg) => msg._id === messageId);
+      if (message) {
+        return prev.map((msg) =>
+          msg._id === messageId ? { ...msg, seen: true } : msg
+        );
+      }
+      return prev;
+    });
   };
 
-  const recordingHandle = (data: {
+  const recordingHandle = ({
+    call_id,
+    recording,
+    userId,
+  }: {
     call_id: string;
     recording: boolean;
     userId: string;
   }) => {
-    if (data.call_id === callId && data.userId === CurrentChat?._id) {
-      setIsCallRecording(data.recording);
-      !data.recording ? setRecordedBy(null) : setRecordedBy(CurrentChat?._id);
+    if (call_id === callId && userId === CurrentChat?._id) {
+      setIsCallRecording(recording);
+      setRecordedBy(recording ? CurrentChat?._id : null);
     }
   };
 
   useEffect(() => {
-    let recorder: MediaRecorder | null;
-    const ffmpeg = new FFmpeg();
-    let chunks: Blob[] = [];
+    const eventHandlers = {
+      recording: recordingHandle,
+      "message-read": messageStatusHandle,
+      "one-to-one-edited": OneToOneEdited,
+      "one-to-one-delete": OneToOneDelete,
+      "one-to-one-message": OneToOneMessage,
+    };
 
-    const loadFFmpeg = async () => {
+    Object.entries(eventHandlers).forEach(([event, handler]) => {
+      ws.on(event, handler);
+    });
+
+    return () => {
+      Object.entries(eventHandlers).forEach(([event, handler]) => {
+        ws.off(event, handler);
+      });
+    };
+  }, [ws, UserData._id, CurrentChat?._id]);
+
+  useEffect(() => {
+    const sessionUUID = Cookies.get("SESSION_UUID");
+    if (!sessionUUID) return;
+
+    const fetchUserProfile = async () => {
+      try {
+        const { data }: AxiosResponse<userData> = await axios.post(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/profile/`,
+          {
+            sessionId: sessionUUID,
+          }
+        );
+
+        const userImage = data.image
+          ? `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${data.image}`
+          : "/user.png";
+        setUserData({ ...data, image: userImage });
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+      }
+    };
+
+    setCallAudio(new Audio("/audios/callring2.mp3"));
+    fetchUserProfile();
+  }, []);
+
+  // useEffect(()=>{
+  //   if (PeerStream && audiosRecorder.length > 0) {
+  //     if (RecordedBy === UserData._id && IsCallRecording && IsRecording) {
+  //       if (MicEnabled && audiosRecorder[0].state === "recording") {
+  //         audiosRecorder[0].stop();
+  //         audiosRecorder[0].stream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[0].stream.removeTrack(track);
+  //         });
+  //         PeerStream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[0].stream.addTrack(track);
+  //         });
+  //         audiosRecorder[0].start();
+  //       } else if (!MicEnabled && audiosRecorder[0].state === "recording") {
+  //         audiosRecorder[0].stop();
+  //         audiosRecorder[0].stream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[0].stream.removeTrack(track);
+  //         });
+  //         PeerStream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[0].stream.addTrack(track);
+  //         });
+  //         audiosRecorder[0].start();
+  //       }
+  //     }
+  //   }
+  // }, [PeerStream, IsCallRecording, IsRecording, RecordedBy, MicEnabled, audiosRecorder[0]]);
+
+  // useEffect(()=>{
+  //   if (RemoteStream && audiosRecorder.length > 0) {
+  //     if (RecordedBy === UserData._id && IsCallRecording && IsRecording) {
+  //       if (!RemoteAudio && audiosRecorder[1].state === "recording") {
+  //         audiosRecorder[1].stop();
+  //         audiosRecorder[1].stream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[1].stream.removeTrack(track);
+  //         });
+  //         RemoteStream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[1].stream.addTrack(track);
+  //         });
+  //         audiosRecorder[1].start();
+  //       } else if (RemoteAudio && audiosRecorder[0].state === "recording") {
+  //         audiosRecorder[1].stop();
+  //         audiosRecorder[1].stream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[1].stream.removeTrack(track);
+  //         });
+  //         RemoteStream.getAudioTracks().forEach((track) => {
+  //           audiosRecorder[1].stream.addTrack(track);
+  //         });
+  //         audiosRecorder[1].start();
+  //       }
+  //     }
+  //   }
+  // }, [RemoteStream, IsCallRecording, IsRecording, RecordedBy, RemoteAudio, audiosRecorder[0]]);
+
+  useEffect(() => {
+    let canvasRecorder: MediaRecorder | null;
+
+    let chunks: {
+      videoChunks: Blob[];
+      peerAudio: Blob[];
+      remoteAudio: Blob[];
+    } = {
+      videoChunks: [],
+      remoteAudio: [],
+      peerAudio: [],
+    };
+
+    const loadRecorder = async () => {
       if (!PeerStream || !RemoteStream) return;
+
       const canvas = RecorderCanvas || document.createElement("canvas");
       !RecorderCanvas && setRecorderCanvas(canvas);
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const remoteStream = RemoteStream;
-      const peerStream = PeerStream;
-
-      const audioContext = new AudioContext();
-
-      const localAudioTracks = peerStream.getAudioTracks();
-      const remoteAudioTracks = remoteStream.getAudioTracks();
-
-      let localAudioSource, remoteAudioSource;
-
-      if (localAudioTracks.length > 0) {
-        localAudioSource = audioContext.createMediaStreamSource(peerStream);
+      if (audiosRecorder.length === 0) {
+        const AudiosRecorder = [
+          new MediaRecorder(PeerStream),
+          new MediaRecorder(RemoteStream),
+        ];
+        setAudiosRecorder(AudiosRecorder);
       }
 
-      if (remoteAudioTracks.length > 0) {
-        remoteAudioSource = audioContext.createMediaStreamSource(remoteStream);
-      }
-
-      const destination = audioContext.createMediaStreamDestination();
-
-      if (localAudioSource) {
-        localAudioSource.connect(destination);
-      }
-      if (remoteAudioSource) {
-        remoteAudioSource.connect(destination);
-      }
-
-      const combinedAudioStream = destination.stream;
-
-      const mainStream = new MediaStream([
-        ...canvas.captureStream().getTracks(),
-        ...combinedAudioStream.getTracks(),
-      ]);
-
-      recorder = mediaRecorder || new MediaRecorder(mainStream);
-      !mediaRecorder && setMediaRecorder(recorder);
+      canvasRecorder =
+        mediaRecorder || new MediaRecorder(canvas.captureStream(30));
+      !mediaRecorder && setMediaRecorder(canvasRecorder);
 
       const localVideo = document.createElement("video");
       localVideo.srcObject = localStream;
@@ -598,58 +704,90 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       };
 
       try {
-        if (!IsRecording) {
-          await ffmpeg.load();
-
-          recorder.ondataavailable = (ev) => {
+        if (!IsRecording && audiosRecorder.length > 0) {
+          audiosRecorder[0].ondataavailable = (ev) => {
             if (ev.data.size > 0) {
-              chunks.push(ev.data);
+              console.log(ev.data, "got new data in peer Audio");
+              chunks.peerAudio.push(ev.data);
             }
           };
 
-          recorder.onstop = async () => {
-            try {
-              const blob = new Blob(chunks, { type: "video/webm" });
-              chunks = []
+          audiosRecorder[1].ondataavailable = (ev) => {
+            if (ev.data.size > 0) {
+              console.log(ev.data, "got new data in remote Audio");
+              chunks.remoteAudio.push(ev.data);
+            }
+          };
 
-              const arrayBuffer = await blob.arrayBuffer();
-              await ffmpeg.writeFile("output.mp4", new Uint8Array(arrayBuffer));
-              const mp4URL = URL.createObjectURL(blob);
+          canvasRecorder.ondataavailable = (ev) => {
+            chunks.videoChunks.push(ev.data);
+          };
+
+          canvasRecorder.onstop = async () => {
+            try {
+              const videoBlob = new Blob(chunks.videoChunks, {
+                type: "video/webm",
+              });
+              const audioBlob1 = new Blob(chunks.peerAudio, {
+                type: "video/webm",
+              });
+              const audioBlob2 = new Blob(chunks.remoteAudio, {
+                type: "video/webm",
+              });
+
+              chunks.videoChunks = [];
+              chunks.remoteAudio = [];
+              chunks.peerAudio = [];
 
               const currentDate = new Date();
+              const formattedDate = currentDate
+                .toISOString()
+                .replace(/:/g, "-")
+                .split(".")[0]
+                .replace("T", "_");
+              const videoFile = `wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
+              const audioFile1 = `wiredtalk-call-recording_1_${callId}_${formattedDate}.mp4`;
+              const audioFile2 = `wiredtalk-call-recording_2_${callId}_${formattedDate}.mp4`;
 
-              const day = String(currentDate.getDate()).padStart(2, "0");
-              const month = String(currentDate.getMonth() + 1).padStart(2, "0");
-              const year = currentDate.getFullYear();
+              const formData = new FormData();
+              formData.append("videoFile", videoBlob, videoFile);
+              formData.append("audioFile1", audioBlob1, audioFile1);
+              formData.append("audioFile2", audioBlob2, audioFile2);
+              formData.append("senderId", UserData._id);
+              formData.append("receiverId", CurrentChat._id);
+              formData.append(
+                "timming",
+                currentDate.toLocaleTimeString([], {
+                  hour12: true,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              );
 
-              const hours = String(currentDate.getHours()).padStart(2, "0");
-              const minutes = String(currentDate.getMinutes()).padStart(2, "0");
-              const seconds = String(currentDate.getSeconds()).padStart(2, "0");
-
-              const formattedDate = `${day}-${month}-${year}_${hours}:${minutes}:${seconds}`;
-              const filename = `wiredtalk-call-recording_${formattedDate}.mp4`;
-              const link = document.createElement("a");
-              link.href = mp4URL;
-              link.download = filename;
-              link.style.display = "none";
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-
-              URL.revokeObjectURL(mp4URL);
+              await axios.post(
+                `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
+                formData,
+                {
+                  headers: {
+                    "Content-Type": "multipart/form-data",
+                  },
+                }
+              );
             } catch (err) {
               console.error("Error processing the video:", err);
             }
           };
 
-          recorder.onerror = (e) => {
+          canvasRecorder.onerror = (e) => {
             console.error("Error during recording:", e);
           };
         }
 
         if (IsCallRecording && !RecordedBy && !IsRecording) {
           drawFrame();
-          recorder.start();
+          audiosRecorder[0].start();
+          audiosRecorder[1].start();
+          canvasRecorder.start();
           setIsRecording(true);
           setRecordedBy(UserData._id);
           ws.emit("recording", {
@@ -663,9 +801,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           RecordedBy === UserData._id &&
           !IsCallRecording &&
           IsRecording &&
-          recorder.state === "recording"
+          canvasRecorder.state === "recording"
         ) {
-          recorder.stop();
+          audiosRecorder[0].stop();
+          audiosRecorder[1].stop();
+          canvasRecorder.stop();
           setIsRecording(false);
           setRecordedBy(null);
           ws.emit("recording", {
@@ -677,11 +817,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
         return;
       } catch (error) {
-        return console.error("Error loading FFmpeg:", error);
+        return console.error("Error loading functions:", error);
       }
     };
 
-    loadFFmpeg();
+    loadRecorder();
   }, [
     callId,
     localStream,
@@ -694,6 +834,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setIsRecording,
     mediaRecorder,
     setMediaRecorder,
+    audiosRecorder,
+    setAudiosRecorder,
   ]);
 
   useEffect(() => {
@@ -701,42 +843,21 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, [callStatus]);
 
   useEffect(() => {
+    const scrollToBottom = () => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    scrollToBottom();
+  }, [MessagesList]);
+
+  useEffect(() => {
     const messageToEdit = MessagesList.find((msg) => msg._id === EditId);
-    if (messageToEdit) {
+    if (messageToEdit && messageToEdit.message) {
       setEditValue(messageToEdit.message);
     } else {
       setEditValue("");
     }
   }, [EditId, MessagesList]);
-
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [MessagesList]);
-
-  useEffect(() => {
-    const sessionUUID = Cookies.get("SESSION_UUID");
-    if (sessionUUID) {
-      setCallAudio(new Audio("/audios/callring2.mp3"));
-      axios
-        .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/profile/`, {
-          sessionId: sessionUUID,
-        })
-        .then(async (res: AxiosResponse) => {
-          const data: userData = await res.data;
-          if (!data.image) {
-            data.image = "/user.png";
-          } else {
-            data.image = `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/user/image/${data.image}`;
-          }
-          setUserData(data);
-        })
-        .catch((error) => {
-          console.error("Error fetching profile:", error);
-        });
-    }
-  }, []);
 
   useEffect(() => {
     const remoteStream = new MediaStream();
@@ -768,7 +889,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       pc.addEventListener("iceconnectionstatechange", async () => {
         if (
           pc.iceConnectionState === "disconnected" ||
-          pc.iceConnectionState === "closed"
+          pc.iceConnectionState === "closed" ||
+          pc.iceConnectionState === "failed"
         ) {
           await stopConnection();
           window.location.replace(prevRoute ? prevRoute : "/");
@@ -788,35 +910,21 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   }, []);
 
   useEffect(() => {
-    ws.on("recording", recordingHandle);
-    ws.on("message-read", messageStatusHandle);
-    ws.on("one-to-one-edited", OneToOneEdited);
-    ws.on("one-to-one-delete", OneToOneDelete);
-    ws.on("one-to-one-message", OneToOneMessage);
-
-    return () => {
-      ws.off("recording", recordingHandle);
-      ws.off("message-read", messageStatusHandle);
-      ws.off("one-to-one-edited", OneToOneEdited);
-      ws.off("one-to-one-delete", OneToOneDelete);
-      ws.off("one-to-one-message", OneToOneMessage);
-    };
-  }, [ws, UserData._id, CurrentChat?._id, MessagesList, setMessagesList]);
-
-  useEffect(() => {
     const handleIncomingOffer = async (data: {
       offer: RTCSessionDescriptionInit;
       from: string;
       to: string;
     }) => {
-      if (data.to !== UserData._id || peerConnection === null) return;
+      const { offer, from, to } = data;
+      if (to !== UserData._id || !peerConnection) return;
+
       try {
         await peerConnection.setRemoteDescription(
-          new RTCSessionDescription(data.offer)
+          new RTCSessionDescription(offer)
         );
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-        ws.emit("answer", { answer, from: UserData._id, to: data.from });
+        ws.emit("answer", { answer, from: UserData._id, to: from });
       } catch (error) {
         console.error("Error handling offer:", error);
       }
@@ -827,10 +935,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       from: string;
       to: string;
     }) => {
-      if (data.to !== UserData._id || peerConnection === null) return;
+      const { answer, from, to } = data;
+      if (to !== UserData._id || !peerConnection) return;
+
       try {
         await peerConnection.setRemoteDescription(
-          new RTCSessionDescription(data.answer)
+          new RTCSessionDescription(answer)
         );
       } catch (error) {
         console.error("Error handling answer:", error);
@@ -840,12 +950,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     const handleIncomingIceCandidate = async (
       candidate: RTCIceCandidateInit
     ) => {
-      if (peerConnection) {
-        try {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (error) {
-          console.error("Error adding received ICE candidate:", error);
-        }
+      if (!peerConnection) return;
+
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (error) {
+        console.error("Error adding received ICE candidate:", error);
       }
     };
 
@@ -1119,25 +1229,34 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         <div className="shadow-inner w-full h-full overflow-y-auto">
           {MessagesList &&
             MessagesList.length > 0 &&
-            MessagesList.map((message: any) => {
+            MessagesList.map((message) => {
               const isSender: boolean =
                 message.senderId === UserData._id ? false : true;
-              return (
-                <MessageBox
-                  key={message._id}
-                  message={message.message}
-                  timming={message.timming}
-                  isSender={isSender}
-                  messageId={message._id}
-                  onEdit={editMessage}
-                  onDelete={() => {
-                    DeleteMessage({
-                      messageId: message._id,
-                      setMessagesList: setMessagesList,
-                    });
-                  }}
-                />
-              );
+
+              if (message.type === "message" && message.message) {
+                return (
+                  <MessageBox
+                    key={message._id}
+                    message={message.message}
+                    timming={message.timming}
+                    isSender={isSender}
+                    messageId={message._id}
+                    onEdit={editMessage}
+                    onDelete={() => {
+                      DeleteMessage({
+                        messageId: message._id,
+                        setMessagesList: setMessagesList,
+                      });
+                    }}
+                  />
+                );
+              } else if (message.type === "recording") {
+                return (
+                  <div>
+                    <p>{message.filePath}</p>
+                  </div>
+                );
+              }
             })}
           <div ref={messagesEndRef}></div>
         </div>

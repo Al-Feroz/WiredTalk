@@ -10,9 +10,11 @@ interface GetMessagesProps {
         _id: string;
         senderId: string;
         receiverId: string;
-        message: string;
+        message?: string;
+        filePath?: string;
         timming: string;
         seen: boolean;
+        type: string;
       }[]
     >
   >;
