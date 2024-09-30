@@ -762,23 +762,15 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 })
               );
 
-              console.log(formData);
-              await axios
-                .post(
-                  `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
-                  formData,
-                  {
-                    headers: {
-                      "Content-Type": "multipart/form-data",
-                    },
-                  }
-                )
-                .then((res) => {
-                  console.log(res);
-                })
-                .catch((err) => {
-                  console.log(err);
-                });
+              await axios.post(
+                `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
+                formData,
+                {
+                  headers: {
+                    "Content-Type": "multipart/form-data",
+                  },
+                }
+              );
             } catch (err) {
               console.error("Error processing the video:", err);
             }
