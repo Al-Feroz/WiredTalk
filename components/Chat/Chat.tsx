@@ -369,6 +369,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                         message.senderId === userData._id ? false : true;
                       return (
                         <div
+                        key={message._id}
                           className={`flex items-center ${
                             isSender ? "justify-start" : "justify-end"
                           } px-2`}

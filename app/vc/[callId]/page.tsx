@@ -303,7 +303,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   const endCall = async () => {
     try {
-      IsCallRecording && RecordedBy === UserData._id && setIsCallRecording(false);
+      if (IsCallRecording && RecordedBy === UserData._id) {
+        setIsCallRecording(false);
+      }
       await stopConnection();
 
       window.location.replace(prevRoute ? prevRoute : "/");
@@ -446,6 +448,44 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     if (peerConnection) {
       peerConnection.close();
     }
+  };
+
+  const downloadRecording = async (filePath: string) => {
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/${filePath}`,
+        {
+          responseType: "blob", // Important to set the response type to blob
+        }
+      );
+
+      // Create a blob from the response data
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"],
+      });
+
+      // Create a link element
+      const link = document.createElement("a");
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filePath; // Set the file name for download
+
+      // Append to the body and trigger the download
+      document.body.appendChild(link);
+      link.click();
+
+      // Clean up
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error("Error downloading the file:", error);
+    }
+  };
+
+  const deleteRecording = async (filename: string) => {
+    await axios.post(
+      `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/delete/`,
+      { filename: filename }
+    );
   };
 
   const editMessage = (messageId: string) => {
@@ -764,18 +804,21 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 })
               );
 
-              await axios.post(
-                `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
-                formData,
-                {
-                  headers: {
-                    "Content-Type": "multipart/form-data",
-                  },
-                }
-              ).then(res=>{
-                setUpdatesMessage(res.data);
-                setTimeout(()=>setUpdatesMessage(null), 5000);
-              }).catch(err=>console.log(err));
+              await axios
+                .post(
+                  `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
+                  formData,
+                  {
+                    headers: {
+                      "Content-Type": "multipart/form-data",
+                    },
+                  }
+                )
+                .then((res) => {
+                  setUpdatesMessage(res.data);
+                  setTimeout(() => setUpdatesMessage(null), 5000);
+                })
+                .catch((err) => console.log(err));
             } catch (err) {
               console.error("Error processing the video:", err);
             }
@@ -1222,9 +1265,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         <div className="relative z-[500]">
           <div className="absolute top-5 left-0 right-0">
             <div className="mx-auto w-fit h-fit px-5 py-2 bg-blue-700 drop-shadow-md rounded">
-              <p className="text-white font-light">
-                {UpdatesMessage}
-              </p>
+              <p className="text-white font-light">{UpdatesMessage}</p>
             </div>
           </div>
         </div>
@@ -1279,9 +1320,42 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                   />
                 );
               } else if (message.type === "recording") {
+                const isSender: boolean =
+                  message.senderId === UserData._id ? false : true;
                 return (
-                  <div>
-                    <p>{message.filePath}</p>
+                  <div
+                    key={message._id}
+                    className={`flex items-center ${
+                      isSender ? "justify-start" : "justify-end"
+                    } px-2`}
+                  >
+                    <div className="relative max-w-64 my-5 px-2 pt-4 pb-2 bg-white">
+                      <p className="bg-gray-100 rounded p-3 text-ellipsis overflow-hidden whitespace-nowrap">
+                        {message.filePath}
+                      </p>
+                      <div className="flex justify-between items-center pt-2">
+                        <button
+                          className="bg-blue-700 hover:bg-blue-900 text-white px-4 py-2 mx-1 rounded"
+                          onClick={() =>
+                            message.filePath &&
+                            downloadRecording(message.filePath)
+                          }
+                        >
+                          Download
+                        </button>
+                        {message.senderId === UserData._id && (
+                          <button
+                            className="bg-blue-700 hover:bg-blue-900 text-white px-4 py-2 mx-1 rounded"
+                            onClick={() =>
+                              message.filePath &&
+                              deleteRecording(message.filePath)
+                            }
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 );
               }
