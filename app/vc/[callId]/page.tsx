@@ -68,6 +68,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     null
   );
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [UpdatesMessage, setUpdatesMessage] = useState<string | null>(null);
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [IsCallRecording, setIsCallRecording] = useState<boolean>(false);
@@ -743,7 +744,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 .replace(/:/g, "-")
                 .split(".")[0]
                 .replace("T", "_");
-              const videoFile = `wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
+              const videoFile = `video-wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
               const audioFile1 = `wiredtalk-call-recording_1_${callId}_${formattedDate}.mp4`;
               const audioFile2 = `wiredtalk-call-recording_2_${callId}_${formattedDate}.mp4`;
 
@@ -770,7 +771,10 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                     "Content-Type": "multipart/form-data",
                   },
                 }
-              );
+              ).then(res=>{
+                setUpdatesMessage(res.data);
+                setTimeout(()=>setUpdatesMessage(null), 5000);
+              }).catch(err=>console.log(err));
             } catch (err) {
               console.error("Error processing the video:", err);
             }
@@ -1213,6 +1217,31 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </div>
         </div>
       )}
+      {UpdatesMessage && (
+        <div className="relative z-[500]">
+          <div className="absolute top-5 left-0 right-0">
+            <div className="mx-auto w-fit h-fit px-5 py-2 bg-blue-700 drop-shadow-md rounded">
+              <p className="text-white font-light">
+                {UpdatesMessage}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      {IsCallRecording && (
+        <div className="relative z-[500]">
+          <div className="absolute top-5 left-0 right-0">
+            <div className="mx-auto w-fit h-fit px-5 py-2 bg-gray-900 bg-opacity-50 drop-shadow-md rounded">
+              <p className="text-white font-light">
+                Call is recording by{" "}
+                {RecordedBy && RecordedBy === UserData._id
+                  ? UserData.name
+                  : CurrentChat.name}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <div
         className={`fixed ${
           messagesShow ? "left-2" : "-left-[110%]"
@@ -1281,18 +1310,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           </button>
         </div>
       </div>
-      {IsCallRecording && (
-        <div className="relative z-[500]">
-          <div className="absolute top-5 left-0 right-0">
-            <div className="mx-auto w-fit h-fit px-5 py-2 bg-gray-900 bg-opacity-50 drop-shadow-md rounded">
-              <p className="text-white font-light">
-                Call is recording by{" "}
-                {RecordedBy && RecordedBy === UserData._id ? UserData.name : CurrentChat.name}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
       <div className="w-[100vw] h-[100vh]">
         <div className="relative w-full h-[85%]">
           <div className="absolute bottom-6 right-10 w-[25%] h-auto z-[100]">
