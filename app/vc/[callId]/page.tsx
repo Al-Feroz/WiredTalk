@@ -303,6 +303,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   const endCall = async () => {
     try {
+      IsCallRecording && RecordedBy === UserData._id && setIsCallRecording(false);
       await stopConnection();
 
       window.location.replace(prevRoute ? prevRoute : "/");
