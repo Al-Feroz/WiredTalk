@@ -707,14 +707,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (!IsRecording && audiosRecorder.length > 0) {
           audiosRecorder[0].ondataavailable = (ev) => {
             if (ev.data.size > 0) {
-              console.log(ev.data, "got new data in peer Audio");
               chunks.peerAudio.push(ev.data);
             }
           };
 
           audiosRecorder[1].ondataavailable = (ev) => {
             if (ev.data.size > 0) {
-              console.log(ev.data, "got new data in remote Audio");
               chunks.remoteAudio.push(ev.data);
             }
           };
@@ -764,15 +762,23 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 })
               );
 
-              await axios.post(
-                `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
-                formData,
-                {
-                  headers: {
-                    "Content-Type": "multipart/form-data",
-                  },
-                }
-              );
+              console.log(formData);
+              await axios
+                .post(
+                  `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
+                  formData,
+                  {
+                    headers: {
+                      "Content-Type": "multipart/form-data",
+                    },
+                  }
+                )
+                .then((res) => {
+                  console.log(res);
+                })
+                .catch((err) => {
+                  console.log(err);
+                });
             } catch (err) {
               console.error("Error processing the video:", err);
             }
