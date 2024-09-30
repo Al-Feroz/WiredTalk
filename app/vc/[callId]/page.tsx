@@ -1287,16 +1287,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             <div className="mx-auto w-fit h-fit px-5 py-2 bg-gray-900 bg-opacity-50 drop-shadow-md rounded">
               <p className="text-white font-light">
                 Call is recording by{" "}
-                {RecordedBy === UserData._id ? UserData.name : CurrentChat.name}
+                {RecordedBy && RecordedBy === UserData._id ? UserData.name : CurrentChat.name}
               </p>
-              {RecordedBy === UserData._id && (
-                <button
-                  className="text-blue-700 text-sm mt-2"
-                  onClick={() => setIsCallRecording(!IsCallRecording)}
-                >
-                  Stop Recoring
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -1371,7 +1363,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             <button
               className="p-2 rounded-full bg-green-600 disabled:bg-green-700 mx-2"
               onClick={() => setIsCallRecording(!IsCallRecording)}
-              disabled={IsCallRecording}
+              disabled={RecordedBy !== null && RecordedBy !== UserData._id}
             >
               <RadioButtonChecked />
             </button>
