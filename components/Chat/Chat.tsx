@@ -81,6 +81,17 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
       `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/delete/`,
       { filename: filename }
     );
+
+    const deleteMessage = MessagesList.find(
+      (message) => message.type === "recording" && message.filePath === filename
+    );
+
+    if (deleteMessage) {
+      setMessagesList((prev) => [
+        ...prev.filter((message) => message._id !== deleteMessage._id),
+      ]);
+      ws.emit("recording-delete", { filename });
+    }
   };
 
   const getFriends = async () => {
@@ -178,12 +189,25 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
     });
   };
 
+  const recordingDeleteHandle = ({ filename }: { filename: string }) => {
+    const deleteMessage = MessagesList.find(
+      (message) => message.type === "recording" && message.filePath === filename
+    );
+
+    if (deleteMessage) {
+      setMessagesList((prev) => [
+        ...prev.filter((message) => message._id !== deleteMessage._id),
+      ]);
+    }
+  };
+
   useEffect(() => {
     const eventHandlers = {
       "message-read": messageStatusHandle,
       "one-to-one-edited": OneToOneEdited,
       "one-to-one-delete": OneToOneDelete,
       "one-to-one-message": OneToOneMessage,
+      "recording-delete": recordingDeleteHandle,
     };
 
     Object.entries(eventHandlers).forEach(([event, handler]) => {
@@ -195,7 +219,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
         ws.off(event, handler);
       });
     };
-  }, [ws, userData._id, CurrentChat?._id]);
+  }, [ws, userData._id, CurrentChat?._id, MessagesList]);
 
   useEffect(() => {
     const scrollToBottom = () => {
@@ -369,7 +393,7 @@ const Chat: React.FunctionComponent<{ userData: userData }> = ({
                         message.senderId === userData._id ? false : true;
                       return (
                         <div
-                        key={message._id}
+                          key={message._id}
                           className={`flex items-center ${
                             isSender ? "justify-start" : "justify-end"
                           } px-2`}

@@ -453,27 +453,25 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const downloadRecording = async (filePath: string) => {
     try {
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/${filePath}`,
+        `${
+          process.env.NEXT_PUBLIC_SERVER_PATH
+        }/recording/audio-${filePath.replace(".mp4", ".mp3")}`,
         {
-          responseType: "blob", // Important to set the response type to blob
+          responseType: "blob",
         }
       );
 
-      // Create a blob from the response data
       const blob = new Blob([response.data], {
         type: response.headers["content-type"],
       });
 
-      // Create a link element
       const link = document.createElement("a");
       link.href = window.URL.createObjectURL(blob);
-      link.download = filePath; // Set the file name for download
+      link.download = filePath;
 
-      // Append to the body and trigger the download
       document.body.appendChild(link);
       link.click();
 
-      // Clean up
       document.body.removeChild(link);
       window.URL.revokeObjectURL(link.href);
     } catch (error) {
@@ -486,6 +484,17 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/delete/`,
       { filename: filename }
     );
+
+    const deleteMessage = MessagesList.find(
+      (message) => message.type === "recording" && message.filePath === filename
+    );
+
+    if (deleteMessage) {
+      setMessagesList((prev) => [
+        ...prev.filter((message) => message._id !== deleteMessage._id),
+      ]);
+      ws.emit("recording-delete", { filename });
+    }
   };
 
   const editMessage = (messageId: string) => {
@@ -558,6 +567,42 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     });
   };
 
+  const recordingSaveHandle = ({
+    _id,
+    senderId,
+    receiverId,
+    filePath,
+    timming,
+    seen,
+  }: {
+    _id: string;
+    senderId: string;
+    receiverId: string;
+    filePath: string;
+    timming: string;
+    seen: boolean;
+  }) => {
+    if (senderId === UserData._id || receiverId === UserData._id) {
+      if (receiverId === UserData._id) {
+        axios.get(
+          `${process.env.NEXT_PUBLIC_SERVER_PATH}/api/v1/message/one-to-one/change-status/${_id}`
+        );
+      }
+      setMessagesList((prev) => [
+        ...prev,
+        {
+          _id,
+          senderId,
+          receiverId,
+          filePath,
+          timming,
+          seen,
+          type: "recording",
+        },
+      ]);
+    }
+  };
+
   const recordingHandle = ({
     call_id,
     recording,
@@ -573,13 +618,27 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     }
   };
 
+  const recordingDeleteHandle = ({ filename }: { filename: string }) => {
+    const deleteMessage = MessagesList.find(
+      (message) => message.type === "recording" && message.filePath === filename
+    );
+
+    if (deleteMessage) {
+      setMessagesList((prev) => [
+        ...prev.filter((message) => message._id !== deleteMessage._id),
+      ]);
+    }
+  };
+
   useEffect(() => {
     const eventHandlers = {
       recording: recordingHandle,
       "message-read": messageStatusHandle,
       "one-to-one-edited": OneToOneEdited,
       "one-to-one-delete": OneToOneDelete,
+      "recording-save": recordingSaveHandle,
       "one-to-one-message": OneToOneMessage,
+      "recording-delete": recordingDeleteHandle,
     };
 
     Object.entries(eventHandlers).forEach(([event, handler]) => {
@@ -591,7 +650,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         ws.off(event, handler);
       });
     };
-  }, [ws, UserData._id, CurrentChat?._id]);
+  }, [ws, UserData._id, CurrentChat?._id, MessagesList]);
 
   useEffect(() => {
     const sessionUUID = Cookies.get("SESSION_UUID");
@@ -815,8 +874,38 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                   }
                 )
                 .then((res) => {
-                  setUpdatesMessage(res.data);
+                  setUpdatesMessage(res.data.message);
                   setTimeout(() => setUpdatesMessage(null), 5000);
+
+                  let addedRecording = false;
+                  const newMessage = {
+                    _id: res.data.recordingId,
+                    senderId: UserData._id,
+                    receiverId: CurrentChat._id,
+                    filePath: videoFile.replace("video-", ""),
+                    timming: currentDate.toLocaleTimeString([], {
+                      hour12: true,
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }),
+                    seen: true,
+                    type: "recording",
+                  };
+
+                  setMessagesList((prevMessages) => {
+                    const recordingExist = prevMessages.some(
+                      (message) => message._id === newMessage._id
+                    );
+                    
+                    if (!recordingExist && !addedRecording) {
+                      addedRecording = true;
+                      return [...prevMessages, newMessage];
+                    }
+                    
+                    return prevMessages;
+                  });
+                  
+                  ws.emit("recording-save", newMessage);
                 })
                 .catch((err) => console.log(err));
             } catch (err) {
@@ -1329,7 +1418,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                       isSender ? "justify-start" : "justify-end"
                     } px-2`}
                   >
-                    <div className="relative max-w-64 my-5 px-2 pt-4 pb-2 bg-white">
+                    <div className="relative max-w-52 my-5 px-2 pt-4 pb-2 bg-white text-sm font-light">
                       <p className="bg-gray-100 rounded p-3 text-ellipsis overflow-hidden whitespace-nowrap">
                         {message.filePath}
                       </p>
@@ -1408,7 +1497,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
               disablePictureInPicture
               playsInline
               autoPlay
-              className="rounded-md w-auto h-auto"
+              className="rounded-md w-auto h-[90%]"
             />
             <div className="absolute top-0 right-0 left-0 bottom-0 flex justify-center items-center">
               <span
