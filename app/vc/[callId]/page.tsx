@@ -67,6 +67,9 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
     null
   );
+  const [AudioRecorder, setAudioRecorder] = useState<MediaRecorder | null>(
+    null
+  );
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [UpdatesMessage, setUpdatesMessage] = useState<string | null>(null);
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
@@ -453,9 +456,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const downloadRecording = async (filePath: string) => {
     try {
       const response = await axios.get(
-        `${
-          process.env.NEXT_PUBLIC_SERVER_PATH
-        }/recording/${filePath}`,
+        `${process.env.NEXT_PUBLIC_SERVER_PATH}/recording/${filePath}`,
         {
           responseType: "blob",
         }
@@ -733,6 +734,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   useEffect(() => {
     let canvasRecorder: MediaRecorder | null;
 
+    let audioChucks: Blob[] = [];
     let chunks: {
       videoChunks: Blob[];
       peerAudio: Blob[];
@@ -750,6 +752,57 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       !RecorderCanvas && setRecorderCanvas(canvas);
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+
+      if(!AudioRecorder) {
+        const CombinedContext = new AudioContext();
+  
+        const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
+        const remoteSource = CombinedContext.createMediaStreamSource(RemoteStream);
+        
+        const peerGain = CombinedContext.createGain();
+        const remoteGain = CombinedContext.createGain();
+        
+        peerGain.gain.setValueAtTime(1, CombinedContext.currentTime);
+        remoteGain.gain.setValueAtTime(1, CombinedContext.currentTime);
+        
+        peerSource.connect(peerGain);
+        remoteSource.connect(remoteGain);
+
+        const destination = CombinedContext.createMediaStreamDestination();
+
+        peerGain.connect(destination);
+        remoteGain.connect(destination);
+        
+        const mixer = CombinedContext.createGain();
+        mixer.gain.setValueAtTime(1, CombinedContext.currentTime);
+        
+        peerGain.connect(mixer);
+        remoteGain.connect(mixer);
+        
+        mixer.connect(CombinedContext.destination);
+
+        const audioRecorder = new MediaRecorder(destination.stream);
+        setAudioRecorder(audioRecorder);
+
+        audioRecorder.ondataavailable = (event) => {
+          audioChucks.push(event.data);
+        };
+        
+        audioRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChucks, { type: 'audio/mp3' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            const downloadLink = document.createElement('a');
+            downloadLink.href = audioUrl;
+            downloadLink.download = 'recording.mp3';
+            document.body.appendChild(downloadLink);
+
+            downloadLink.click();
+
+            document.body.removeChild(downloadLink);
+            window.URL.revokeObjectURL(downloadLink.href);
+        };
+      }
 
       if (audiosRecorder.length === 0) {
         const AudiosRecorder = [
@@ -971,6 +1024,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setMediaRecorder,
     audiosRecorder,
     setAudiosRecorder,
+    AudioRecorder,
+    setAudioRecorder,
   ]);
 
   useEffect(() => {
