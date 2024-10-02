@@ -973,6 +973,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
         if (IsCallRecording && !RecordedBy && !IsRecording) {
           drawFrame();
+          AudioRecorder?.start();
           audiosRecorder[0].start();
           audiosRecorder[1].start();
           canvasRecorder.start();
@@ -991,6 +992,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           IsRecording &&
           canvasRecorder.state === "recording"
         ) {
+          AudioRecorder?.stop();
           audiosRecorder[0].stop();
           audiosRecorder[1].stop();
           canvasRecorder.stop();
