@@ -76,6 +76,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [IsCallRecording, setIsCallRecording] = useState<boolean>(false);
   const [PeerStream, setPeerStream] = useState<MediaStream | null>(null);
+  const [RecordedAudio, setRecordedAudio] = useState<Blob | null>(null);
+  const [RecordedVideo, setRecordedVideo] = useState<Blob | null>(null);
   const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
   const [RecordedBy, setRecordedBy] = useState<string | null>(null);
@@ -734,7 +736,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   useEffect(() => {
     let canvasRecorder: MediaRecorder | null;
 
-    let audioChucks: Blob[] = [];
+    let audioChunks: Blob[] = [];
     let videoChunks: Blob[] = [];
 
     const loadRecorder = async () => {
@@ -745,18 +747,22 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      if(!AudioRecorder) {
+      const peerAudio = PeerStream.getAudioTracks().length;
+      const remoteAudio = RemoteStream.getAudioTracks().length;
+
+      if (!AudioRecorder && peerAudio > 0 && remoteAudio > 0) {
         const CombinedContext = new AudioContext();
-  
+
         const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
-        const remoteSource = CombinedContext.createMediaStreamSource(RemoteStream);
-        
+        const remoteSource =
+          CombinedContext.createMediaStreamSource(RemoteStream);
+
         const peerGain = CombinedContext.createGain();
         const remoteGain = CombinedContext.createGain();
-        
+
         peerGain.gain.setValueAtTime(1, CombinedContext.currentTime);
         remoteGain.gain.setValueAtTime(1, CombinedContext.currentTime);
-        
+
         peerSource.connect(peerGain);
         remoteSource.connect(remoteGain);
 
@@ -764,20 +770,27 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
         peerGain.connect(destination);
         remoteGain.connect(destination);
-        
+
         const mixer = CombinedContext.createGain();
         mixer.gain.setValueAtTime(1, CombinedContext.currentTime);
-        
+
         peerGain.connect(mixer);
         remoteGain.connect(mixer);
-        
+
         mixer.connect(CombinedContext.destination);
 
         const audioRecorder = new MediaRecorder(destination.stream);
         setAudioRecorder(audioRecorder);
 
         audioRecorder.ondataavailable = (event) => {
-          audioChucks.push(event.data);
+          audioChunks.push(event.data);
+        };
+
+        audioRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+          audioChunks = [];
+
+          setRecordedAudio(audioBlob);
         };
       }
 
@@ -833,88 +846,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           };
 
           canvasRecorder.onstop = async () => {
-            try {
-              const videoBlob = new Blob(videoChunks, {
-                type: "video/webm",
-              });
-              const audioBlob = new Blob(videoChunks, {
-                type: "audio/webm",
-              });
+            const videoBlob = new Blob(videoChunks, {
+              type: "video/webm",
+            });
+            videoChunks = [];
 
-              videoChunks = [];
-              audioChucks = [];
-
-              const currentDate = new Date();
-              const formattedDate = currentDate
-                .toISOString()
-                .replace(/:/g, "-")
-                .split(".")[0]
-                .replace("T", "_");
-              const videoFile = `video-wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
-              const audioFile = `audio-wiredtalk-call-recording_${callId}_${formattedDate}.mp3`;
-              
-              const formData = new FormData();
-              formData.append("videoFile", videoBlob, videoFile);
-              formData.append("audioFile", audioBlob, audioFile);
-              formData.append("senderId", UserData._id);
-              formData.append("receiverId", CurrentChat._id);
-              formData.append(
-                "timming",
-                currentDate.toLocaleTimeString([], {
-                  hour12: true,
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              );
-
-              await axios
-                .post(
-                  `${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`,
-                  formData,
-                  {
-                    headers: {
-                      "Content-Type": "multipart/form-data",
-                    },
-                  }
-                )
-                .then((res) => {
-                  setUpdatesMessage(res.data.message);
-                  setTimeout(() => setUpdatesMessage(null), 5000);
-
-                  let addedRecording = false;
-                  const newMessage = {
-                    _id: res.data.recordingId,
-                    senderId: UserData._id,
-                    receiverId: CurrentChat._id,
-                    filePath: videoFile.replace("video-", ""),
-                    timming: currentDate.toLocaleTimeString([], {
-                      hour12: true,
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }),
-                    seen: true,
-                    type: "recording",
-                  };
-
-                  setMessagesList((prevMessages) => {
-                    const recordingExist = prevMessages.some(
-                      (message) => message._id === newMessage._id
-                    );
-                    
-                    if (!recordingExist && !addedRecording) {
-                      addedRecording = true;
-                      return [...prevMessages, newMessage];
-                    }
-                    
-                    return prevMessages;
-                  });
-                  
-                  ws.emit("recording-save", newMessage);
-                })
-                .catch((err) => console.log(err));
-            } catch (err) {
-              console.error("Error processing the video:", err);
-            }
+            setRecordedVideo(videoBlob);
           };
 
           canvasRecorder.onerror = (e) => {
@@ -939,6 +876,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           RecordedBy === UserData._id &&
           !IsCallRecording &&
           IsRecording &&
+          AudioRecorder?.state === "recording" &&
           canvasRecorder.state === "recording"
         ) {
           AudioRecorder?.stop();
@@ -950,6 +888,76 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             recording: false,
             userId: UserData._id,
           });
+        }
+
+        if (RecordedAudio && RecordedVideo) {
+          const currentDate = new Date();
+          const formattedDate = currentDate
+            .toISOString()
+            .replace(/:/g, "-")
+            .split(".")[0]
+            .replace("T", "_");
+          const videoFile = `video-wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
+          const audioFile = `audio-wiredtalk-call-recording_${callId}_${formattedDate}.mp3`;
+
+          const formData = new FormData();
+          formData.append("videoFile", RecordedVideo, videoFile);
+          formData.append("audioFile", RecordedAudio, audioFile);
+          formData.append("senderId", UserData._id);
+          formData.append("receiverId", CurrentChat._id);
+          formData.append(
+            "timming",
+            currentDate.toLocaleTimeString([], {
+              hour12: true,
+              hour: "2-digit",
+              minute: "2-digit",
+            })
+          );
+
+          setRecordedAudio(null);
+          setRecordedVideo(null);
+
+          await axios
+            .post(`${process.env.NEXT_PUBLIC_SERVER_PATH}/uploads/`, formData, {
+              headers: {
+                "Content-Type": "multipart/form-data",
+              },
+            })
+            .then((res) => {
+              setUpdatesMessage(res.data.message);
+              setTimeout(() => setUpdatesMessage(null), 5000);
+
+              let addedRecording = false;
+              const newMessage = {
+                _id: res.data.recordingId,
+                senderId: UserData._id,
+                receiverId: CurrentChat._id,
+                filePath: videoFile.replace("video-", ""),
+                timming: currentDate.toLocaleTimeString([], {
+                  hour12: true,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                seen: true,
+                type: "recording",
+              };
+
+              setMessagesList((prevMessages) => {
+                const recordingExist = prevMessages.some(
+                  (message) => message._id === newMessage._id
+                );
+
+                if (!recordingExist && !addedRecording) {
+                  addedRecording = true;
+                  return [...prevMessages, newMessage];
+                }
+
+                return prevMessages;
+              });
+
+              ws.emit("recording-save", newMessage);
+            })
+            .catch((err) => console.log(err));
         }
 
         return;
@@ -973,6 +981,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setMediaRecorder,
     AudioRecorder,
     setAudioRecorder,
+    PeerStream?.getAudioTracks(),
+    RemoteStream?.getAudioTracks(),
+    RecordedAudio,
+    setRecordedAudio,
+    RecordedVideo,
+    setRecordedVideo,
   ]);
 
   useEffect(() => {
