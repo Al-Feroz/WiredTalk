@@ -455,7 +455,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const response = await axios.get(
         `${
           process.env.NEXT_PUBLIC_SERVER_PATH
-        }/recording/audio-${filePath.replace(".mp4", ".mp3")}`,
+        }/recording/${filePath}`,
         {
           responseType: "blob",
         }
