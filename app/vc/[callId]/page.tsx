@@ -735,15 +735,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     let canvasRecorder: MediaRecorder | null;
 
     let audioChucks: Blob[] = [];
-    let chunks: {
-      videoChunks: Blob[];
-      peerAudio: Blob[];
-      remoteAudio: Blob[];
-    } = {
-      videoChunks: [],
-      remoteAudio: [],
-      peerAudio: [],
-    };
+    let videoChunks: Blob[] = [];
 
     const loadRecorder = async () => {
       if (!PeerStream || !RemoteStream) return;
@@ -787,29 +779,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         audioRecorder.ondataavailable = (event) => {
           audioChucks.push(event.data);
         };
-        
-        audioRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChucks, { type: 'audio/mp3' });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            const downloadLink = document.createElement('a');
-            downloadLink.href = audioUrl;
-            downloadLink.download = 'recording.mp3';
-            document.body.appendChild(downloadLink);
-
-            downloadLink.click();
-
-            document.body.removeChild(downloadLink);
-            window.URL.revokeObjectURL(downloadLink.href);
-        };
-      }
-
-      if (audiosRecorder.length === 0) {
-        const AudiosRecorder = [
-          new MediaRecorder(PeerStream),
-          new MediaRecorder(RemoteStream),
-        ];
-        setAudiosRecorder(AudiosRecorder);
       }
 
       canvasRecorder =
@@ -858,38 +827,22 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       };
 
       try {
-        if (!IsRecording && audiosRecorder.length > 0) {
-          audiosRecorder[0].ondataavailable = (ev) => {
-            if (ev.data.size > 0) {
-              chunks.peerAudio.push(ev.data);
-            }
-          };
-
-          audiosRecorder[1].ondataavailable = (ev) => {
-            if (ev.data.size > 0) {
-              chunks.remoteAudio.push(ev.data);
-            }
-          };
-
+        if (!IsRecording) {
           canvasRecorder.ondataavailable = (ev) => {
-            chunks.videoChunks.push(ev.data);
+            videoChunks.push(ev.data);
           };
 
           canvasRecorder.onstop = async () => {
             try {
-              const videoBlob = new Blob(chunks.videoChunks, {
+              const videoBlob = new Blob(videoChunks, {
                 type: "video/webm",
               });
-              const audioBlob1 = new Blob(chunks.peerAudio, {
-                type: "video/webm",
-              });
-              const audioBlob2 = new Blob(chunks.remoteAudio, {
-                type: "video/webm",
+              const audioBlob = new Blob(videoChunks, {
+                type: "audio/webm",
               });
 
-              chunks.videoChunks = [];
-              chunks.remoteAudio = [];
-              chunks.peerAudio = [];
+              videoChunks = [];
+              audioChucks = [];
 
               const currentDate = new Date();
               const formattedDate = currentDate
@@ -898,13 +851,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
                 .split(".")[0]
                 .replace("T", "_");
               const videoFile = `video-wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
-              const audioFile1 = `wiredtalk-call-recording_1_${callId}_${formattedDate}.mp4`;
-              const audioFile2 = `wiredtalk-call-recording_2_${callId}_${formattedDate}.mp4`;
-
+              const audioFile = `audio-wiredtalk-call-recording_${callId}_${formattedDate}.mp3`;
+              
               const formData = new FormData();
               formData.append("videoFile", videoBlob, videoFile);
-              formData.append("audioFile1", audioBlob1, audioFile1);
-              formData.append("audioFile2", audioBlob2, audioFile2);
+              formData.append("audioFile", audioBlob, audioFile);
               formData.append("senderId", UserData._id);
               formData.append("receiverId", CurrentChat._id);
               formData.append(
@@ -974,8 +925,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         if (IsCallRecording && !RecordedBy && !IsRecording) {
           drawFrame();
           AudioRecorder?.start();
-          audiosRecorder[0].start();
-          audiosRecorder[1].start();
           canvasRecorder.start();
           setIsRecording(true);
           setRecordedBy(UserData._id);
@@ -993,8 +942,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           canvasRecorder.state === "recording"
         ) {
           AudioRecorder?.stop();
-          audiosRecorder[0].stop();
-          audiosRecorder[1].stop();
           canvasRecorder.stop();
           setIsRecording(false);
           setRecordedBy(null);
@@ -1024,8 +971,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setIsRecording,
     mediaRecorder,
     setMediaRecorder,
-    audiosRecorder,
-    setAudiosRecorder,
     AudioRecorder,
     setAudioRecorder,
   ]);
