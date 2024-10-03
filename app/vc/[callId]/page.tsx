@@ -734,37 +734,41 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      const peerAudio = PeerStream.getAudioTracks().length;
-      const remoteAudio = RemoteStream.getAudioTracks().length;
+      // const peerAudio = PeerStream.getAudioTracks().length;
+      // const remoteAudio = RemoteStream.getAudioTracks().length;
 
-      if (!AudioRecorder && peerAudio > 0 && remoteAudio > 0) {
+      if (
+        !AudioRecorder
+        // && peerAudio > 0
+        // && remoteAudio > 0
+      ) {
         const CombinedContext = new AudioContext();
 
-        const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
-        const remoteSource =
-          CombinedContext.createMediaStreamSource(RemoteStream);
+        // const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
+        // const remoteSource =
+        //   CombinedContext.createMediaStreamSource(RemoteStream);
 
-        const peerGain = CombinedContext.createGain();
-        const remoteGain = CombinedContext.createGain();
+        // const peerGain = CombinedContext.createGain();
+        // const remoteGain = CombinedContext.createGain();
 
-        peerGain.gain.setValueAtTime(1, CombinedContext.currentTime);
-        remoteGain.gain.setValueAtTime(1, CombinedContext.currentTime);
+        // peerGain.gain.setValueAtTime(1, CombinedContext.currentTime);
+        // remoteGain.gain.setValueAtTime(1, CombinedContext.currentTime);
 
-        peerSource.connect(peerGain);
-        remoteSource.connect(remoteGain);
+        // peerSource.connect(peerGain);
+        // remoteSource.connect(remoteGain);
 
         const destination = CombinedContext.createMediaStreamDestination();
 
-        peerGain.connect(destination);
-        remoteGain.connect(destination);
+        // peerGain.connect(destination);
+        // remoteGain.connect(destination);
 
-        const mixer = CombinedContext.createGain();
-        mixer.gain.setValueAtTime(1, CombinedContext.currentTime);
+        // const mixer = CombinedContext.createGain();
+        // mixer.gain.setValueAtTime(1, CombinedContext.currentTime);
 
-        peerGain.connect(mixer);
-        remoteGain.connect(mixer);
+        // peerGain.connect(mixer);
+        // remoteGain.connect(mixer);
 
-        mixer.connect(CombinedContext.destination);
+        // mixer.connect(CombinedContext.destination);
 
         const audioRecorder = new MediaRecorder(destination.stream);
         setAudioRecorder(audioRecorder);
@@ -968,8 +972,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setMediaRecorder,
     AudioRecorder,
     setAudioRecorder,
-    PeerStream?.getAudioTracks(),
-    RemoteStream?.getAudioTracks(),
+    // PeerStream?.getAudioTracks(),
+    // RemoteStream?.getAudioTracks(),
     RecordedAudio,
     setRecordedAudio,
     RecordedVideo,
