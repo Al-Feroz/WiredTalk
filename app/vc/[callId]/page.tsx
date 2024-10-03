@@ -165,24 +165,19 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   const changeAudio = async () => {
     const newState = !MicEnabled;
-    const LocalStream = localStream;
     const peerStream = PeerStream;
-    if (!LocalStream || !peerStream) return;
+    if (!peerStream) return;
 
     if (newState) {
       const constraints = await getConstraints();
       const audioStream = await getMediaStream(constraints.audio, "audio");
 
       if (audioStream instanceof MediaStream) {
-        LocalStream.getAudioTracks().forEach((track) => {
-          LocalStream.removeTrack(track);
-        });
         peerStream.getAudioTracks().forEach((track) => {
           peerStream.removeTrack(track);
         });
 
         audioStream.getAudioTracks().forEach((track) => {
-          LocalStream.addTrack(track);
           peerStream.addTrack(track);
           if (peerConnection && peerConnection.signalingState !== "closed") {
             peerConnection
@@ -193,15 +188,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         });
       }
     } else {
-      LocalStream.getAudioTracks().forEach((track) =>
-        LocalStream.removeTrack(track)
-      );
       peerStream
         .getAudioTracks()
         .forEach((track) => peerStream.removeTrack(track));
 
       const silentAudioTrack = createSilentAudioStream().getAudioTracks()[0];
-      LocalStream.addTrack(silentAudioTrack);
       peerStream.addTrack(silentAudioTrack);
       if (peerConnection && peerConnection.signalingState !== "closed") {
         peerConnection
@@ -211,11 +202,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       }
     }
 
-    setLocalStream(LocalStream);
     setPeerStream(peerStream);
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = LocalStream;
-    }
     socket.emit("change-event", {
       state: newState,
       type: "audio",
