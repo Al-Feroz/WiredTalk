@@ -668,58 +668,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     fetchUserProfile();
   }, []);
 
-  // useEffect(()=>{
-  //   if (PeerStream && audiosRecorder.length > 0) {
-  //     if (RecordedBy === UserData._id && IsCallRecording && IsRecording) {
-  //       if (MicEnabled && audiosRecorder[0].state === "recording") {
-  //         audiosRecorder[0].stop();
-  //         audiosRecorder[0].stream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[0].stream.removeTrack(track);
-  //         });
-  //         PeerStream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[0].stream.addTrack(track);
-  //         });
-  //         audiosRecorder[0].start();
-  //       } else if (!MicEnabled && audiosRecorder[0].state === "recording") {
-  //         audiosRecorder[0].stop();
-  //         audiosRecorder[0].stream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[0].stream.removeTrack(track);
-  //         });
-  //         PeerStream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[0].stream.addTrack(track);
-  //         });
-  //         audiosRecorder[0].start();
-  //       }
-  //     }
-  //   }
-  // }, [PeerStream, IsCallRecording, IsRecording, RecordedBy, MicEnabled, audiosRecorder[0]]);
-
-  // useEffect(()=>{
-  //   if (RemoteStream && audiosRecorder.length > 0) {
-  //     if (RecordedBy === UserData._id && IsCallRecording && IsRecording) {
-  //       if (!RemoteAudio && audiosRecorder[1].state === "recording") {
-  //         audiosRecorder[1].stop();
-  //         audiosRecorder[1].stream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[1].stream.removeTrack(track);
-  //         });
-  //         RemoteStream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[1].stream.addTrack(track);
-  //         });
-  //         audiosRecorder[1].start();
-  //       } else if (RemoteAudio && audiosRecorder[0].state === "recording") {
-  //         audiosRecorder[1].stop();
-  //         audiosRecorder[1].stream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[1].stream.removeTrack(track);
-  //         });
-  //         RemoteStream.getAudioTracks().forEach((track) => {
-  //           audiosRecorder[1].stream.addTrack(track);
-  //         });
-  //         audiosRecorder[1].start();
-  //       }
-  //     }
-  //   }
-  // }, [RemoteStream, IsCallRecording, IsRecording, RecordedBy, RemoteAudio, audiosRecorder[0]]);
-
   useEffect(() => {
     let canvasRecorder: MediaRecorder | null;
 
@@ -734,33 +682,29 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
-      // const peerAudio = PeerStream.getAudioTracks().length;
-      // const remoteAudio = RemoteStream.getAudioTracks().length;
+      const peerAudio = PeerStream.getAudioTracks().length;
+      const remoteAudio = RemoteStream.getAudioTracks().length;
 
-      if (
-        !AudioRecorder
-        // && peerAudio > 0
-        // && remoteAudio > 0
-      ) {
+      if (!AudioRecorder && peerAudio > 0 && remoteAudio > 0) {
         const CombinedContext = new AudioContext();
 
-        // const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
-        // const remoteSource =
-        //   CombinedContext.createMediaStreamSource(RemoteStream);
+        const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
+        const remoteSource =
+          CombinedContext.createMediaStreamSource(RemoteStream);
 
-        // const peerGain = CombinedContext.createGain();
-        // const remoteGain = CombinedContext.createGain();
+        const peerGain = CombinedContext.createGain();
+        const remoteGain = CombinedContext.createGain();
 
-        // peerGain.gain.setValueAtTime(1, CombinedContext.currentTime);
-        // remoteGain.gain.setValueAtTime(1, CombinedContext.currentTime);
+        peerGain.gain.setValueAtTime(1, CombinedContext.currentTime);
+        remoteGain.gain.setValueAtTime(1, CombinedContext.currentTime);
 
-        // peerSource.connect(peerGain);
-        // remoteSource.connect(remoteGain);
+        peerSource.connect(peerGain);
+        remoteSource.connect(remoteGain);
 
         const destination = CombinedContext.createMediaStreamDestination();
 
-        // peerGain.connect(destination);
-        // remoteGain.connect(destination);
+        peerGain.connect(destination);
+        remoteGain.connect(destination);
 
         // const mixer = CombinedContext.createGain();
         // mixer.gain.setValueAtTime(1, CombinedContext.currentTime);
@@ -972,8 +916,8 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setMediaRecorder,
     AudioRecorder,
     setAudioRecorder,
-    // PeerStream?.getAudioTracks(),
-    // RemoteStream?.getAudioTracks(),
+    PeerStream?.getAudioTracks(),
+    RemoteStream?.getAudioTracks(),
     RecordedAudio,
     setRecordedAudio,
     RecordedVideo,
