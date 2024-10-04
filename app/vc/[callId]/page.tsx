@@ -61,26 +61,25 @@ const VC: NextPage<{ params: { callId: string } }> = ({
   );
   const [RecorderCanvas, setRecorderCanvas] =
     useState<HTMLCanvasElement | null>(null);
-  const [audiosRecorder, setAudiosRecorder] = useState<Array<MediaRecorder>>(
-    []
-  );
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
     null
   );
   const [AudioRecorder, setAudioRecorder] = useState<MediaRecorder | null>(
     null
   );
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [RemoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [UpdatesMessage, setUpdatesMessage] = useState<string | null>(null);
   const [CallAudio, setCallAudio] = useState<HTMLAudioElement | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [IsCallRecording, setIsCallRecording] = useState<boolean>(false);
   const [PeerStream, setPeerStream] = useState<MediaStream | null>(null);
-  const [RecordedAudio, setRecordedAudio] = useState<Blob | null>(null);
   const [RecordedVideo, setRecordedVideo] = useState<Blob | null>(null);
   const [IsScreenShared, setIsScreenShared] = useState<boolean>(false);
   const [isCallStarted, setIsCallStarted] = useState<boolean>(false);
+  const [AudioChunks, setAudioChunks] = useState<Array<Blob>>([]);
   const [RecordedBy, setRecordedBy] = useState<string | null>(null);
+  const [RecorderAudio, setRecorderAudio] = useState<boolean>(true);
   const [messagesShow, setMessagesShow] = useState<boolean>(false);
   const [VideoEnabled, setVideoEnabled] = useState<boolean>(true);
   const [IsRecording, setIsRecording] = useState<boolean>(false);
@@ -670,9 +669,53 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
   useEffect(() => {
     let canvasRecorder: MediaRecorder | null;
+    let audioRecorder: MediaRecorder | null;
 
-    let audioChunks: Blob[] = [];
     let videoChunks: Blob[] = [];
+
+    const concatenateBlobs = async () => {
+      const ArrayBuffers: ArrayBuffer[] = [];
+
+      await Promise.all(
+        AudioChunks.map(async (chunk) => {
+          const blob = new Blob([chunk], { type: "audio/webm" });
+          const array_buffer = await blobToArrayBuffer(blob);
+          ArrayBuffers.push(array_buffer);
+        })
+      );
+
+      setAudioChunks([]);
+
+      const totalByteLength = ArrayBuffers.reduce(
+        (total, buffer) => total + (buffer as ArrayBuffer).byteLength,
+        0
+      );
+
+      const combinedArrayBuffer = new Uint8Array(totalByteLength);
+
+      let offset = 0;
+      for (const arrayBuffer of ArrayBuffers) {
+        combinedArrayBuffer.set(
+          new Uint8Array(arrayBuffer as ArrayBuffer),
+          offset
+        );
+        offset += (arrayBuffer as ArrayBuffer).byteLength;
+      }
+
+      return new Blob([combinedArrayBuffer], { type: "audio/webm" });
+    };
+
+    const blobToArrayBuffer = (blob: Blob): Promise<ArrayBuffer> => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) {
+            resolve(reader.result);
+          }
+        };
+        reader.readAsArrayBuffer(blob);
+      });
+    };
 
     const loadRecorder = async () => {
       if (!PeerStream || !RemoteStream) return;
@@ -682,12 +725,13 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
 
+      const CombinedContext = audioContext || new AudioContext();
+      !audioContext && setAudioContext(CombinedContext);
+
       const peerAudio = PeerStream.getAudioTracks().length;
       const remoteAudio = RemoteStream.getAudioTracks().length;
 
-      if (!AudioRecorder && peerAudio > 0 && remoteAudio > 0) {
-        const CombinedContext = new AudioContext();
-
+      if (peerAudio > 0 && remoteAudio > 0) {
         const peerSource = CombinedContext.createMediaStreamSource(PeerStream);
         const remoteSource =
           CombinedContext.createMediaStreamSource(RemoteStream);
@@ -706,27 +750,26 @@ const VC: NextPage<{ params: { callId: string } }> = ({
         peerGain.connect(destination);
         remoteGain.connect(destination);
 
-        // const mixer = CombinedContext.createGain();
-        // mixer.gain.setValueAtTime(1, CombinedContext.currentTime);
+        audioRecorder = AudioRecorder || new MediaRecorder(destination.stream);
+        !AudioRecorder && setAudioRecorder(audioRecorder);
 
-        // peerGain.connect(mixer);
-        // remoteGain.connect(mixer);
+        if ((!MicEnabled && RecorderAudio) || (MicEnabled && !RecorderAudio)) {
+          let RecordingStopped = false;
 
-        // mixer.connect(CombinedContext.destination);
+          if (audioRecorder.state === "recording") {
+            audioRecorder.stop();
+            RecordingStopped = true;
+          }
 
-        const audioRecorder = new MediaRecorder(destination.stream);
-        setAudioRecorder(audioRecorder);
-
-        audioRecorder.ondataavailable = (event) => {
-          audioChunks.push(event.data);
-        };
-
-        audioRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-          audioChunks = [];
-
-          setRecordedAudio(audioBlob);
-        };
+          audioRecorder.stream
+            .getAudioTracks()
+            .map((track) => audioRecorder?.stream.removeTrack(track));
+          destination.stream
+            .getAudioTracks()
+            .map((track) => audioRecorder?.stream.addTrack(track));
+          setRecorderAudio(!RecorderAudio);
+          RecordingStopped && audioRecorder.start();
+        }
       }
 
       canvasRecorder =
@@ -775,7 +818,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
       };
 
       try {
-        if (!IsRecording) {
+        if (!IsRecording && audioRecorder) {
+          audioRecorder.ondataavailable = (ev) => {
+            setAudioChunks((prev) => [...prev, ev.data]);
+          };
+
           canvasRecorder.ondataavailable = (ev) => {
             videoChunks.push(ev.data);
           };
@@ -794,10 +841,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           };
         }
 
-        if (IsCallRecording && !RecordedBy && !IsRecording) {
+        if (IsCallRecording && !RecordedBy && !IsRecording && audioRecorder) {
           drawFrame();
-          AudioRecorder?.start();
+
+          audioRecorder.start();
           canvasRecorder.start();
+
           setIsRecording(true);
           setRecordedBy(UserData._id);
           ws.emit("recording", {
@@ -811,10 +860,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           RecordedBy === UserData._id &&
           !IsCallRecording &&
           IsRecording &&
-          AudioRecorder?.state === "recording" &&
+          audioRecorder &&
+          audioRecorder.state === "recording" &&
           canvasRecorder.state === "recording"
         ) {
-          AudioRecorder?.stop();
+          audioRecorder.stop();
           canvasRecorder.stop();
           setIsRecording(false);
           setRecordedBy(null);
@@ -825,7 +875,7 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           });
         }
 
-        if (RecordedAudio && RecordedVideo) {
+        if (RecordedVideo) {
           const currentDate = new Date();
           const formattedDate = currentDate
             .toISOString()
@@ -835,9 +885,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           const videoFile = `video-wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
           const audioFile = `audio-wiredtalk-call-recording_${callId}_${formattedDate}.mp3`;
 
+          const audioRecording = await concatenateBlobs();
+
           const formData = new FormData();
           formData.append("videoFile", RecordedVideo, videoFile);
-          formData.append("audioFile", RecordedAudio, audioFile);
+          formData.append("audioFile", audioRecording, audioFile);
           formData.append("senderId", UserData._id);
           formData.append("receiverId", CurrentChat._id);
           formData.append(
@@ -849,7 +901,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
             })
           );
 
-          setRecordedAudio(null);
           setRecordedVideo(null);
 
           await axios
@@ -904,8 +955,11 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     loadRecorder();
   }, [
     callId,
+    MicEnabled,
     localStream,
     RemoteStream,
+    audioContext,
+    setAudioContext,
     RecorderCanvas,
     setRecorderCanvas,
     IsCallRecording,
@@ -918,10 +972,12 @@ const VC: NextPage<{ params: { callId: string } }> = ({
     setAudioRecorder,
     PeerStream?.getAudioTracks(),
     RemoteStream?.getAudioTracks(),
-    RecordedAudio,
-    setRecordedAudio,
+    RecorderAudio,
+    setRecorderAudio,
     RecordedVideo,
     setRecordedVideo,
+    AudioChunks,
+    setAudioChunks,
   ]);
 
   useEffect(() => {
