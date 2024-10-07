@@ -673,50 +673,6 @@ const VC: NextPage<{ params: { callId: string } }> = ({
 
     let videoChunks: Blob[] = [];
 
-    const concatenateBlobs = async () => {
-      const ArrayBuffers: ArrayBuffer[] = [];
-
-      await Promise.all(
-        AudioChunks.map(async (chunk) => {
-          const blob = new Blob([chunk], { type: "audio/webm" });
-          const array_buffer = await blobToArrayBuffer(blob);
-          ArrayBuffers.push(array_buffer);
-        })
-      );
-
-      setAudioChunks([]);
-
-      const totalByteLength = ArrayBuffers.reduce(
-        (total, buffer) => total + (buffer as ArrayBuffer).byteLength,
-        0
-      );
-
-      const combinedArrayBuffer = new Uint8Array(totalByteLength);
-
-      let offset = 0;
-      for (const arrayBuffer of ArrayBuffers) {
-        combinedArrayBuffer.set(
-          new Uint8Array(arrayBuffer as ArrayBuffer),
-          offset
-        );
-        offset += (arrayBuffer as ArrayBuffer).byteLength;
-      }
-
-      return new Blob([combinedArrayBuffer], { type: "audio/webm" });
-    };
-
-    const blobToArrayBuffer = (blob: Blob): Promise<ArrayBuffer> => {
-      return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (reader.result instanceof ArrayBuffer) {
-            resolve(reader.result);
-          }
-        };
-        reader.readAsArrayBuffer(blob);
-      });
-    };
-
     const loadRecorder = async () => {
       if (!PeerStream || !RemoteStream) return;
 
@@ -885,11 +841,17 @@ const VC: NextPage<{ params: { callId: string } }> = ({
           const videoFile = `video-wiredtalk-call-recording_${callId}_${formattedDate}.mp4`;
           const audioFile = `audio-wiredtalk-call-recording_${callId}_${formattedDate}.mp3`;
 
-          const audioRecording = await concatenateBlobs();
+          const audioBlobs = await Promise.all(
+            AudioChunks.map(
+              (chunk) => new Blob([chunk], { type: "audio/webm" })
+            )
+          );
 
           const formData = new FormData();
           formData.append("videoFile", RecordedVideo, videoFile);
-          formData.append("audioFile", audioRecording, audioFile);
+          audioBlobs.map((audioBlob, index)=>
+            formData.append("audioFile-"+index, audioBlob, index+"-"+audioFile)
+          );
           formData.append("senderId", UserData._id);
           formData.append("receiverId", CurrentChat._id);
           formData.append(
